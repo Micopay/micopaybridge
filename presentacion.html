@@ -1,0 +1,388 @@
+<title>MicoPay Bridge — Guion de presentación</title>
+<style>
+  :root {
+    --paper: #eceef4;
+    --grid: #dfe2ec;
+    --card: #ffffff;
+    --card-2: #f6f7fb;
+    --ink: #14151d;
+    --ink-soft: #4c4f61;
+    --ink-faint: #7a7d90;
+    --line: #d6d9e4;
+    --line-strong: #c2c6d5;
+    --indigo: #3a34a6;   /* Soroban / Stellar */
+    --indigo-ink: #2c2880;
+    --blue: #1a76cf;     /* XRP Ledger */
+    --blue-ink: #145ba0;
+    --green: #1c8a58;
+    --amber: #a86c14;
+    --shadow: 0 1px 2px rgba(20,21,29,.06), 0 8px 24px rgba(20,21,29,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0c0d13;
+      --grid: #161823;
+      --card: #15161f;
+      --card-2: #1b1d28;
+      --ink: #e9eaf1;
+      --ink-soft: #9fa2b3;
+      --ink-faint: #71748699;
+      --line: #262837;
+      --line-strong: #333549;
+      --indigo: #837ee6;
+      --indigo-ink: #a29ef0;
+      --blue: #4fa4ee;
+      --blue-ink: #7cc0f6;
+      --green: #46c489;
+      --amber: #d8a24d;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --paper: #eceef4; --grid: #dfe2ec; --card: #ffffff; --card-2: #f6f7fb;
+    --ink: #14151d; --ink-soft: #4c4f61; --ink-faint: #7a7d90; --line: #d6d9e4; --line-strong: #c2c6d5;
+    --indigo: #3a34a6; --indigo-ink: #2c2880; --blue: #1a76cf; --blue-ink: #145ba0;
+    --green: #1c8a58; --amber: #a86c14; --shadow: 0 1px 2px rgba(20,21,29,.06), 0 8px 24px rgba(20,21,29,.06);
+  }
+  :root[data-theme="dark"] {
+    --paper: #0c0d13; --grid: #161823; --card: #15161f; --card-2: #1b1d28;
+    --ink: #e9eaf1; --ink-soft: #9fa2b3; --ink-faint: #717486; --line: #262837; --line-strong: #333549;
+    --indigo: #837ee6; --indigo-ink: #a29ef0; --blue: #4fa4ee; --blue-ink: #7cc0f6;
+    --green: #46c489; --amber: #d8a24d; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background-color: var(--paper);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 28px 28px;
+    color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace; }
+
+  .wrap { max-width: 900px; margin: 0 auto; padding: clamp(20px, 4vw, 56px) clamp(16px, 4vw, 40px) 96px; }
+
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--ink-faint); display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .eyebrow .tick { color: var(--blue); }
+  .eyebrow .tick.i { color: var(--indigo); }
+
+  h1 {
+    font-size: clamp(34px, 6.5vw, 60px); line-height: 1.02; letter-spacing: -.025em;
+    margin: 18px 0 0; font-weight: 800; text-wrap: balance;
+  }
+  h1 .sub { display: block; font-size: clamp(18px, 3vw, 25px); font-weight: 500; letter-spacing: -.01em; color: var(--ink-soft); margin-top: 14px; line-height: 1.3; }
+
+  .lede { font-size: clamp(18px, 2.4vw, 21px); color: var(--ink-soft); max-width: 62ch; margin: 22px 0 0; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
+  .chip {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; letter-spacing: .02em;
+    padding: 6px 11px; border-radius: 999px; border: 1px solid var(--line-strong);
+    background: var(--card); color: var(--ink-soft); display: inline-flex; align-items: center; gap: 7px;
+    font-variant-numeric: tabular-nums;
+  }
+  .chip b { color: var(--ink); font-weight: 700; }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: none; }
+  .chip .dot.a { background: var(--amber); }
+
+  section { margin-top: clamp(44px, 7vw, 76px); }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 22px; }
+  .sec-num { font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: var(--blue); font-weight: 700; letter-spacing: .05em; flex: none; }
+  h2 { font-size: clamp(22px, 3.5vw, 30px); letter-spacing: -.02em; margin: 0; font-weight: 750; text-wrap: balance; }
+  .sec-sub { color: var(--ink-faint); font-size: 15px; margin: 4px 0 0; }
+
+  .thesis {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: clamp(20px, 3vw, 30px);
+    box-shadow: var(--shadow); position: relative; overflow: hidden;
+  }
+  .thesis::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background: linear-gradient(var(--indigo), var(--blue)); }
+  .flow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-family: ui-monospace, Menlo, monospace; font-size: 14px; margin-top: 4px; }
+  .node { padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line-strong); background: var(--card-2); font-weight: 600; }
+  .node.i { border-color: color-mix(in srgb, var(--indigo) 45%, var(--line)); color: var(--indigo-ink); }
+  .node.x { border-color: color-mix(in srgb, var(--blue) 45%, var(--line)); color: var(--blue-ink); }
+  .arrow { color: var(--ink-faint); font-size: 18px; }
+
+  /* run of show cue cards */
+  .cue { display: flex; gap: 18px; padding: 22px 0; border-top: 1px solid var(--line); }
+  .cue:first-of-type { border-top: 1px solid var(--line-strong); }
+  .cue-n {
+    flex: none; width: 40px; height: 40px; border-radius: 11px; background: var(--card);
+    border: 1px solid var(--line-strong); display: grid; place-items: center;
+    font-family: ui-monospace, Menlo, monospace; font-weight: 700; font-size: 17px; color: var(--blue);
+    font-variant-numeric: tabular-nums; box-shadow: var(--shadow);
+  }
+  .cue-body { flex: 1; min-width: 0; }
+  .cue h3 { margin: 6px 0 0; font-size: 19px; letter-spacing: -.01em; font-weight: 700; }
+  .cue .time { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--ink-faint); }
+  pre {
+    margin: 12px 0 0; padding: 13px 15px; border-radius: 10px; overflow-x: auto;
+    background: #14151d; color: #e9eaf1; font-size: 13.5px; line-height: 1.7;
+    border: 1px solid #2c2f3d;
+  }
+  pre .p { color: #6ee7b7; } /* prompt */
+  pre .c { color: #8b90a4; } /* comment */
+  .cue-line { margin: 12px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: baseline; }
+  .cue-line .k { font-family: ui-monospace, Menlo, monospace; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-faint); white-space: nowrap; padding-top: 1px; }
+  .cue-line .v { margin: 0; color: var(--ink-soft); }
+  .cue-line .v.say { color: var(--ink); font-weight: 500; }
+  .cue-line .v.say::before { content: "“"; color: var(--blue); }
+  .cue-line .v.say::after { content: "”"; color: var(--blue); }
+
+  /* status table */
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); background: var(--card); }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  th, td { text-align: left; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+  th { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); font-weight: 600; background: var(--card-2); }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { font-weight: 600; }
+  .st { font-family: ui-monospace, Menlo, monospace; font-size: 13px; white-space: nowrap; font-weight: 700; display: inline-flex; align-items: center; gap: 7px; }
+  .st.ok { color: var(--green); }
+  .st.wait { color: var(--amber); }
+  .st .d { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+  td .note { color: var(--ink-faint); font-size: 13.5px; font-weight: 400; }
+
+  /* Q&A */
+  .qa { display: grid; gap: 14px; }
+  .q {
+    background: var(--card); border: 1px solid var(--line); border-radius: 13px; padding: 18px 20px; box-shadow: var(--shadow);
+  }
+  .q .ask { font-weight: 700; font-size: 16.5px; display: flex; gap: 10px; align-items: baseline; }
+  .q .ask .mk { color: var(--blue); font-family: ui-monospace, Menlo, monospace; flex: none; }
+  .q .ans { margin: 9px 0 0 0; color: var(--ink-soft); }
+  .q .ans strong { color: var(--ink); font-weight: 650; }
+
+  /* roadmap */
+  .road { display: grid; gap: 0; }
+  .wk { display: grid; grid-template-columns: 96px 1fr; gap: 18px; padding: 18px 0; border-top: 1px dashed var(--line-strong); }
+  .wk:first-child { border-top: none; }
+  .wk .when { font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: var(--indigo-ink); font-weight: 700; letter-spacing: .02em; }
+  .wk .what h3 { margin: 0 0 4px; font-size: 17px; font-weight: 700; }
+  .wk .what p { margin: 0; color: var(--ink-soft); font-size: 15px; }
+
+  .callout {
+    margin-top: 30px; background: var(--card-2); border: 1px solid var(--line-strong); border-left: 4px solid var(--blue);
+    border-radius: 12px; padding: 18px 22px; color: var(--ink-soft);
+  }
+  .callout b { color: var(--ink); }
+
+  footer { margin-top: 72px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--ink-faint); font-size: 13.5px; font-family: ui-monospace, Menlo, monospace; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+
+  a { color: var(--blue-ink); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--blue) 40%, transparent); }
+  a:focus-visible, .chip:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 4px; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal { opacity: 0; transform: translateY(10px); animation: rise .6s cubic-bezier(.2,.7,.2,1) forwards; }
+    @keyframes rise { to { opacity: 1; transform: none; } }
+  }
+  @media (max-width: 560px) {
+    .cue { gap: 12px; }
+    .wk { grid-template-columns: 1fr; gap: 6px; }
+    h1 { font-size: 38px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="reveal">
+    <div class="eyebrow">
+      <span><span class="tick i">◆</span> Soroban / Stellar</span>
+      <span aria-hidden="true">·</span>
+      <span><span class="tick">◆</span> XRP Ledger</span>
+      <span aria-hidden="true">·</span>
+      <span>Hackathon XRPL</span>
+    </div>
+    <h1>MicoPay Bridge
+      <span class="sub">Swaps atómicos entre dos cadenas, coordinados por agentes de IA. Sin custodio. Corriendo en testnet real.</span>
+    </h1>
+    <p class="lede">Guion para la reunión de equipo: qué mostrar, en qué orden, y qué decir. Todo lo listado abajo ejecuta en vivo — no son diapositivas, son transacciones on-chain.</p>
+    <div class="chips" role="list">
+      <span class="chip" role="listitem"><span class="dot"></span>Demo cross-chain <b>en vivo</b></span>
+      <span class="chip" role="listitem"><span class="dot"></span>Suite de fallos <b>6/6</b></span>
+      <span class="chip" role="listitem"><span class="dot"></span>Traducción cripto <b>8 tests</b></span>
+      <span class="chip" role="listitem"><span class="dot"></span>Tokens XLS-85 <b>OK</b></span>
+      <span class="chip" role="listitem"><span class="dot a"></span>RLUSD <b>esperando a Ripple</b></span>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><h2>La tesis, en una frase</h2></div>
+    <div class="thesis">
+      <p style="margin:0 0 16px; font-size:18px;">XRPL ya trae el candado criptográfico de un swap atómico a nivel de ledger — <b>no hay contrato que escribir</b>. El trabajo fue traducir el mismo secreto y el mismo reloj entre las dos cadenas, y demostrarlo sin que nadie custodie los fondos.</p>
+      <div class="flow" aria-label="Flujo del swap">
+        <span class="node i">Soroban: bloquea</span>
+        <span class="arrow">→</span>
+        <span class="node x">XRPL: bloquea</span>
+        <span class="arrow">→</span>
+        <span class="node">revela secreto</span>
+        <span class="arrow">→</span>
+        <span class="node">relay retransmite</span>
+        <span class="arrow">→</span>
+        <span class="node">ambos cobran</span>
+      </div>
+      <p style="margin:16px 0 0; color:var(--ink-soft); font-size:15px;">La misma preimagen que libera XRP en una cadena desbloquea el escrow espejo en la otra. El relay solo reenvía un secreto que ya es público — nunca toca el dinero.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span>
+      <div><h2>Orden de la demo</h2><p class="sec-sub">~15 min. Terminal en <span class="mono">xrpl-escrow/</span>. Corre el flujo completo una vez ANTES de la reunión.</p></div>
+    </div>
+
+    <div class="cue">
+      <div class="cue-n">1</div>
+      <div class="cue-body">
+        <span class="time">~1 min · la pieza principal</span>
+        <h3>Swap cross-chain completo</h3>
+        <pre><span class="p">›</span> node demo_full_swap.js</pre>
+        <div class="cue-line">
+          <span class="k">Verán</span><p class="v">1 XLM se convierte en 5 XRP entre Soroban y XRPL. Termina en “SWAP ATÓMICO COMPLETO”.</p>
+          <span class="k">Di</span><p class="v say">Un activo cruza dos blockchains sin que ningún intermediario custodie los fondos. Esto está pasando en testnet ahora mismo.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="cue">
+      <div class="cue-n">2</div>
+      <div class="cue-body">
+        <span class="time">~30 s · la prueba</span>
+        <h3>Abrir el explorer</h3>
+        <pre><span class="c"># pega el contract ID en stellar.expert/explorer/testnet</span>
+CANNVHGZHVSVQO76SIVV5YNHH6ODDBV5IEROUITFTFIH6NRLF7XHRCIT</pre>
+        <div class="cue-line">
+          <span class="k">Verán</span><p class="v">Las transacciones del swap, reales, on-chain.</p>
+          <span class="k">Di</span><p class="v say">No es una simulación. Aquí está la transacción, verificable por cualquiera.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="cue">
+      <div class="cue-n">3</div>
+      <div class="cue-body">
+        <span class="time">~2 min · dos terminales · el “coordinado por IA”</span>
+        <h3>Agentes autónomos</h3>
+        <pre><span class="c"># terminal 1 — agente B queda escuchando</span>
+<span class="p">›</span> node agent_b.js
+<span class="c"># terminal 2 — agente A ejecuta todo solo</span>
+<span class="p">›</span> node agent_a.js</pre>
+        <div class="cue-line">
+          <span class="k">Verán</span><p class="v">A descubre a B, negocia el precio, verifica on-chain y ejecuta — sin humano en el medio.</p>
+          <span class="k">Di</span><p class="v say">Ningún agente confía en el otro: cada afirmación se verifica en la cadena antes de mover un peso.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="cue">
+      <div class="cue-n">4</div>
+      <div class="cue-body">
+        <span class="time">~30 s · NO correr en vivo, mostrar el resultado guardado</span>
+        <h3>Suite de fallos — 6/6</h3>
+        <pre><span class="c"># 5.5 min si se corre; en la reunión muestra el log ya generado</span>
+<span class="p">›</span> node failure_suite.js</pre>
+        <div class="cue-line">
+          <span class="k">Verán</span><p class="v">6 formas de atacar o romper el swap; en todas los fondos terminan donde deben.</p>
+          <span class="k">Di</span><p class="v say">Los bridges que han sido hackeados cayeron por estos huecos. Nosotros los probamos uno por uno.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="cue">
+      <div class="cue-n">5</div>
+      <div class="cue-body">
+        <span class="time">cierre</span>
+        <h3>El README como resumen</h3>
+        <div class="cue-line">
+          <span class="k">Verán</span><p class="v">Tabla de estado con evidencia por pieza, IDs desplegados, comandos.</p>
+          <span class="k">Di</span><p class="v say">Todo esto es reproducible desde cualquier máquina. Aquí está cómo.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><h2>Estado del entregable</h2></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Pieza</th><th>Estado</th><th>Evidencia</th></tr></thead>
+        <tbody>
+          <tr><td>Primitiva XRPL nativa <span class="note">(Escrow + PREIMAGE-SHA-256 + CancelAfter)</span></td><td><span class="st ok"><span class="d"></span>OK</span></td><td class="mono note">escrow_demo.js</td></tr>
+          <tr><td>Traducción criptográfica <span class="note">Soroban ↔ XRPL</span></td><td><span class="st ok"><span class="d"></span>8 tests</span></td><td class="mono note">bridge-translate.js</td></tr>
+          <tr><td>Relay de dos ledgers <span class="note">(nunca custodia)</span></td><td><span class="st ok"><span class="d"></span>OK</span></td><td class="mono note">relay.js</td></tr>
+          <tr><td>Swap cross-chain completo</td><td><span class="st ok"><span class="d"></span>OK</span></td><td class="mono note">demo_full_swap.js</td></tr>
+          <tr><td>Agentes autónomos <span class="note">(descubrir → negociar → ejecutar)</span></td><td><span class="st ok"><span class="d"></span>OK</span></td><td class="mono note">agent_a.js · agent_b.js</td></tr>
+          <tr><td>Suite de fallos <span class="note">(6 escenarios de ataque/fallo)</span></td><td><span class="st ok"><span class="d"></span>6/6</span></td><td class="mono note">failure_suite.js</td></tr>
+          <tr><td>Escrow de tokens / IOUs <span class="note">(XLS-85)</span></td><td><span class="st ok"><span class="d"></span>OK</span></td><td class="mono note">test_token_escrow.js</td></tr>
+          <tr><td>RLUSD específicamente</td><td><span class="st wait"><span class="d"></span>Ripple</span></td><td class="note">Mecanismo listo; la emisora testnet aún no activa el flag</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span>
+      <div><h2>Qué contestar cuando pregunten</h2><p class="sec-sub">Dilo tú antes de que lo pregunten — la honestidad es lo que da credibilidad.</p></div>
+    </div>
+    <div class="qa">
+      <div class="q">
+        <p class="ask"><span class="mk">?</span><span>¿Y RLUSD? El pitch habla de pesos gastables.</span></p>
+        <p class="ans">Verificamos <strong>on-chain</strong> que la emisora de RLUSD en testnet aún no activó el flag XLS-85, así que hoy no es escrowable. Nuestro bridge ya soporta el mecanismo completo — probado con un IOU propio, mismo código exacto. RLUSD entra el día que Ripple prenda el switch, <strong>sin cambiar una línea nuestra</strong>.</p>
+      </div>
+      <div class="q">
+        <p class="ask"><span class="mk">?</span><span>¿El precio del swap de dónde sale?</span></p>
+        <p class="ans">Hoy está <strong>fijo en el agente</strong> para la demo. En producción viene de un oráculo o de un orderbook. Es integración, no un problema abierto.</p>
+      </div>
+      <div class="q">
+        <p class="ask"><span class="mk">?</span><span>¿Quién corre el relay y por qué? ¿Quién paga sus fees?</span></p>
+        <p class="ans">El relay neutral es una conveniencia, no un requisito. En el fondo <strong>cada agente corre su propio watcher</strong> por interés propio — como en nuestra demo de agentes. Nadie tiene que confiar en un tercero.</p>
+      </div>
+      <div class="q">
+        <p class="ask"><span class="mk">?</span><span>Quien tiene el secreto tiene una “opción gratis”: elige si ejecuta según el precio.</span></p>
+        <p class="ans">Correcto — es la crítica académica clásica al atomic swap. Se mitiga con <strong>timeouts cortos</strong> y con <strong>reputación (ZKaaS)</strong>: un agente que abandona swaps quema su reputación anónima on-chain. Ahí encaja directamente la pieza de Mota.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="sec-num">05</span>
+      <div><h2>Camino a mainnet</h2><p class="sec-sub">Ventana hasta el 16 de agosto. El riesgo técnico ya está retirado; lo que queda es integración y operación.</p></div>
+    </div>
+    <div class="road">
+      <div class="wk">
+        <div class="when">Sem. 1</div>
+        <div class="what"><h3>Integración con AIGENTS real</h3><p>Los agentes ya hablan los shapes x402 del repo; falta enchufarlos al <span class="mono">apps/api</span> real y listar el swap en Bazaar usando el campo <span class="mono">chain</span> ya reservado. Coordinación con Mota — es el camino crítico.</p></div>
+      </div>
+      <div class="wk">
+        <div class="when">Sem. 2</div>
+        <div class="what"><h3>Espejo de MicopayEscrow</h3><p>Modelo vendedor/comprador + comisión, sobre las primitivas de XRPL. No es port directo: el fee sin contrato requiere diseño (probablemente dos escrows con la misma condición). Con su propia suite de fallos.</p></div>
+      </div>
+      <div class="wk">
+        <div class="when">Sem. 3</div>
+        <div class="what"><h3>Mainnet</h3><p>Fondos reales (montos de centavos bastan para demostrar), llaves fuera de faucet, verificar amendments. Cambia la operación, no el código.</p></div>
+      </div>
+      <div class="wk">
+        <div class="when">Sem. 4</div>
+        <div class="what"><h3>Empaque y ensayo</h3><p>Video de respaldo, demo ensayada, explorers y wallets pre-fondeadas, respuestas listas. Buffer para lo que truene.</p></div>
+      </div>
+    </div>
+    <div class="callout">
+      <b>Veredicto:</b> vamos adelantados, no atrasados. El error típico de hackathon es gastar tres semanas en lo que ya está hecho y llegar sin integración ni ensayo. Nuestro único riesgo real es la coordinación con AIGENTS — por eso esta reunión.
+    </div>
+  </section>
+
+  <footer>
+    <span>MicoPay Bridge · guion interno</span>
+    <span>Soroban ◆ XRPL · testnet</span>
+  </footer>
+
+</div>
