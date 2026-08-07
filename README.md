@@ -54,13 +54,20 @@ y no aparece referenciado ni en `render.yaml` ni en `.env.example`.
 | | `micopaybridge` (aquí) | `micopay-protocol` |
 |---|---|---|
 | Producto | Agentes, x402, ZK, puente cross-chain | APK + app móvil retail |
-| Backend | `apps/api` (protocolo x402) — pendiente de migrar | `micopay/backend` — en producción |
-| Escrow Soroban | `micopay-escrow` del servicio x402 — pendiente | `micopay/contracts/escrow` (móvil), `CB4M5777…ALO3HZ` |
+| Backend | `apps/api` — protocolo x402 | `micopay/backend` — en producción |
+| Escrow Soroban | `contracts/micopay-escrow` — el del servicio x402 | `micopay/contracts/escrow` — el del móvil, `CB4M5777…ALO3HZ` |
 | Se despliega | no todavía | sí |
 
-**Sin resolver:** `apps/api/src/routes/reputation.ts` sirve tiers a agentes pero los calcula
-leyendo datos de comercios, que tras el split son del backend móvil. Hay que decidir la
-frontera antes de migrar esa ruta (§M3 del plan). Mientras tanto no se migra.
+Los dos escrows **divergieron en abril y no son intercambiables**. Difieren en 78 líneas.
+Unificarlos sería un cambio de comportamiento en producción disfrazado de limpieza.
+
+**Sin resolver — la frontera del §M3.** `apps/api/src/routes/reputation.ts` sirve tiers de
+reputación a agentes detrás de x402, pero los calcula leyendo datos de comercios que tras
+el split son del backend móvil. Se migró con un `TODO` visible en el import: hoy es la
+opción (a), leer el mismo esquema. La recomendada es la (b) — que `micopay/backend` exponga
+un endpoint interno de reputación y este repo lo consuma, con un contrato explícito y
+versionable. Mientras siga así, **una migración del móvil puede romper a los agentes sin
+avisar**.
 
 ## Origen del código migrado
 
