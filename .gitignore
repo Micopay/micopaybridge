@@ -1,3 +1,5 @@
 node_modules/
 .env
 *.log
+relay-state.json
+relay-state.json.tmp

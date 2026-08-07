@@ -12,12 +12,62 @@
 //    que llame release() en Soroban (release exige auth de la contraparte,
 //    así que ahí el relay notifica, no firma).
 
+const fs = require("fs");
 const xrpl = require("xrpl");
 const { Horizon, rpc, xdr, scValToNative } = require("@stellar/stellar-sdk");
 const bt = require("./bridge-translate");
 
 const XRPL_TESTNET = "wss://s.altnet.rippletest.net:51233";
 const SOROBAN_TESTNET_RPC = "https://soroban-testnet.stellar.org";
+const DEFAULT_STATE_PATH = "./relay-state.json";
+
+/**
+ * Log de una línea por intento, con swap_id y ledger. Legible y grepeable:
+ *   [relay] xrpl_finish_ok swap=a3f1… ledger=6218440 result=tesSUCCESS
+ */
+function log(event, fields = {}) {
+  const kv = Object.entries(fields)
+    .filter(([, v]) => v !== undefined && v !== null)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(" ");
+  console.log(`[relay] ${event}${kv ? " " + kv : ""}`);
+}
+
+const shortId = (buf) => (buf ? Buffer.from(buf).toString("hex").slice(0, 12) : undefined);
+
+/**
+ * Cursor persistido de la pierna Soroban.
+ *
+ * Sin esto, reiniciar el relay a mitad de un swap arranca desde el ledger
+ * actual y los eventos `released` emitidos durante la caída se pierden para
+ * siempre: la pierna XRPL nunca se completa y los fondos se quedan hasta el
+ * CancelAfter.
+ *
+ * La pierna XRPL no necesita archivo: su "cursor" es el historial de la
+ * cuenta (`account_tx`), que el ledger conserva — por eso se re-escanea con
+ * findRevealedPreimage() en cada arranque en vez de persistir posición.
+ */
+class RelayState {
+  constructor(filePath = DEFAULT_STATE_PATH) {
+    this.path = filePath;
+    this.data = { sorobanCursor: null, sorobanLedger: null };
+    if (filePath && fs.existsSync(filePath)) {
+      try {
+        Object.assign(this.data, JSON.parse(fs.readFileSync(filePath, "utf8")));
+      } catch (e) {
+        log("state_ilegible", { path: filePath, error: e.message });
+      }
+    }
+  }
+
+  /** Escritura atómica: un crash a mitad no deja el cursor corrupto. */
+  save() {
+    if (!this.path) return;
+    const tmp = `${this.path}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2));
+    fs.renameSync(tmp, this.path);
+  }
+}
 
 /**
  * Extrae la preimagen de un Fulfillment DER de XRPL (A0 22 80 20 <32 bytes>).
@@ -91,19 +141,51 @@ class XrplWatcher {
  * Llama onReveal({ preimage, swapId, event }).
  */
 class SorobanWatcher {
-  constructor({ rpcUrl = SOROBAN_TESTNET_RPC, contractId, onReveal, pollMs = 5000 }) {
+  constructor({ rpcUrl = SOROBAN_TESTNET_RPC, contractId, onReveal, pollMs = 5000, state = new RelayState() }) {
     this.server = new rpc.Server(rpcUrl);
     this.contractId = contractId;
     this.onReveal = onReveal;
     this.pollMs = pollMs;
-    this.cursor = null;
+    this.state = state;
+    this.cursor = state.data.sorobanCursor;
+    this.startLedger = state.data.sorobanLedger;
+    this.polling = false;
     this.timer = null;
   }
 
   async start() {
-    const latest = await this.server.getLatestLedger();
-    this.startLedger = latest.sequence;
-    this.timer = setInterval(() => this.poll().catch((e) => console.error("[soroban] poll error:", e.message)), this.pollMs);
+    if (this.cursor || this.startLedger) {
+      log("soroban_reanudado", { cursor: this.cursor, ledger: this.startLedger });
+    } else {
+      const latest = await this.server.getLatestLedger();
+      this.startLedger = latest.sequence;
+      log("soroban_arranque_limpio", { ledger: this.startLedger });
+    }
+    this.timer = setInterval(() => this.tick(), this.pollMs);
+  }
+
+  /** Un poll a la vez: si el anterior sigue procesando, este ciclo se salta. */
+  async tick() {
+    if (this.polling) return;
+    this.polling = true;
+    try {
+      await this.poll();
+    } catch (e) {
+      // El RPC solo conserva ~24 h de eventos. Un cursor más viejo que la
+      // retención es irrecuperable: se salta al ledger actual y se avisa
+      // FUERTE, porque en esa ventana pudo perderse una revelación.
+      if (/cursor|startLedger|ledger/i.test(e.message) && (this.cursor || this.startLedger)) {
+        log("soroban_cursor_vencido", { cursor: this.cursor, ledger: this.startLedger, error: e.message });
+        const latest = await this.server.getLatestLedger();
+        this.cursor = null;
+        this.startLedger = latest.sequence;
+        this.persist();
+      } else {
+        log("soroban_poll_error", { error: e.message });
+      }
+    } finally {
+      this.polling = false;
+    }
   }
 
   async poll() {
@@ -120,13 +202,23 @@ class SorobanWatcher {
     else req.startLedger = this.startLedger;
 
     const res = await this.server.getEvents(req);
-    this.cursor = res.cursor;
     for (const ev of res.events ?? []) {
       // value del evento = tupla (swap_id, secret)
       const value = scValToNative(ev.value);
       const [swapId, secret] = Array.isArray(value) ? value : [null, value];
-      this.onReveal({ preimage: Buffer.from(secret), swapId: swapId && Buffer.from(swapId), event: ev });
+      // await: el cursor NO avanza hasta que el evento quedó atendido. Si el
+      // proceso muere aquí, al reiniciar se vuelve a leer este mismo evento.
+      await this.onReveal({ preimage: Buffer.from(secret), swapId: swapId && Buffer.from(swapId), event: ev });
     }
+    this.cursor = res.cursor;
+    if (res.latestLedger) this.startLedger = res.latestLedger;
+    this.persist();
+  }
+
+  persist() {
+    this.state.data.sorobanCursor = this.cursor;
+    this.state.data.sorobanLedger = this.startLedger;
+    this.state.save();
   }
 
   async stop() {
@@ -146,7 +238,8 @@ class SorobanWatcher {
 class Relay {
   constructor(config) {
     this.config = config;
-    this.log = (...a) => console.log("[relay]", ...a);
+    this.state = config.state ?? new RelayState(config.statePath);
+    this.inFlight = new Set();
   }
 
   async start() {
@@ -155,35 +248,89 @@ class Relay {
     if (config.soroban?.contractId) {
       this.sorobanWatcher = new SorobanWatcher({
         contractId: config.soroban.contractId,
-        onReveal: async ({ preimage, swapId }) => {
-          this.log("secreto revelado en Soroban, swap:", swapId?.toString("hex"));
+        state: this.state,
+        onReveal: async ({ preimage, swapId, event }) => {
+          log("soroban_revelado", { swap: shortId(swapId ?? bt.sorobanSwapId(preimage)), ledger: event?.ledger });
           await this.completeXrplLeg(preimage);
         },
       });
       await this.sorobanWatcher.start();
-      this.log("observando Soroban:", config.soroban.contractId);
+      log("observando_soroban", { contract: config.soroban.contractId });
     }
 
     if (config.xrpl?.escrowOwner) {
       this.xrplWatcher = new XrplWatcher({
         escrowOwner: config.xrpl.escrowOwner,
-        onReveal: ({ preimage, tx }) => {
-          this.log("preimagen revelada en XRPL, tx:", tx.hash ?? "(hash en meta)");
-          this.log("sha256:", bt.sorobanSecretHash(preimage).toString("hex"));
-          config.onSorobanClaimNeeded?.(preimage);
-        },
+        onReveal: ({ preimage, tx }) => this.handleXrplReveal(preimage, tx),
       });
       await this.xrplWatcher.start();
-      this.log("observando XRPL, cuenta:", config.xrpl.escrowOwner);
+      log("observando_xrpl", { cuenta: config.xrpl.escrowOwner });
+
+      // Recuperación tras caída: lo que se reveló mientras el relay estaba
+      // muerto no llega por suscripción, solo está en el historial.
+      const recovered = await findRevealedPreimage(this.xrplWatcher.client, config.xrpl.escrowOwner);
+      if (recovered) {
+        log("xrpl_recuperado_de_historial", { swap: shortId(bt.sorobanSwapId(recovered)) });
+        this.handleXrplReveal(recovered, {});
+      }
     }
   }
 
-  /** Envía EscrowFinish en XRPL con la preimagen revelada en Soroban. */
+  /**
+   * XRPL reveló: el relay no puede firmar el release() de Soroban (exige auth
+   * de la contraparte), así que solo entrega la preimagen al agente.
+   * Idempotente por swap dentro del proceso — el re-escaneo de arranque puede
+   * traer la misma preimagen que después llega por suscripción.
+   */
+  handleXrplReveal(preimage, tx = {}) {
+    const swap = bt.sorobanSwapId(preimage).toString("hex");
+    if (this.inFlight.has(swap)) {
+      log("xrpl_revelado_duplicado_ignorado", { swap: swap.slice(0, 12) });
+      return;
+    }
+    this.inFlight.add(swap);
+    log("xrpl_revelado", {
+      swap: swap.slice(0, 12),
+      ledger: tx.ledger_index,
+      tx: tx.hash,
+      sha256: bt.sorobanSecretHash(preimage).toString("hex").slice(0, 12),
+    });
+    this.config.onSorobanClaimNeeded?.(preimage);
+  }
+
+  /**
+   * Envía EscrowFinish en XRPL con la preimagen revelada en Soroban.
+   *
+   * Idempotente. La autoridad es la cadena, no el estado local: el objeto
+   * escrow desaparece del ledger al completarse o cancelarse, así que su
+   * ausencia significa "ya no hay nada que hacer". Reenviar dos veces no
+   * paga dos veces — devuelve null y no gasta fee.
+   */
   async completeXrplLeg(preimage) {
     const { escrowOwner, offerSequence, relayWallet } = this.config.xrpl;
+    const swap = bt.sorobanSwapId(preimage).toString("hex");
+    const condition = bt.xrplCondition(preimage);
+
+    if (this.inFlight.has(swap)) {
+      log("xrpl_finish_en_curso_ignorado", { swap: swap.slice(0, 12) });
+      return null;
+    }
+    this.inFlight.add(swap);
+
     const client = new xrpl.Client(this.config.xrpl.server ?? XRPL_TESTNET);
     await client.connect();
+    let resuelto = false;
     try {
+      // La condition identifica el escrow: se deriva de la preimagen de ESTE
+      // swap y ninguna otra la produce. Si no está, ya se completó o se canceló.
+      const objs = await client.request({ command: "account_objects", account: escrowOwner, type: "escrow" });
+      const escrow = objs.result.account_objects.find((o) => o.Condition === condition);
+      if (!escrow) {
+        log("xrpl_finish_omitido_escrow_ausente", { swap: swap.slice(0, 12), owner: escrowOwner });
+        resuelto = true;
+        return null;
+      }
+
       const res = await client.submitAndWait(
         {
           TransactionType: "EscrowFinish",
@@ -191,14 +338,31 @@ class Relay {
           SourceTag: bt.SOURCE_TAG,
           Owner: escrowOwner,
           OfferSequence: offerSequence,
-          Condition: bt.xrplCondition(preimage),
+          Condition: condition,
           Fulfillment: bt.xrplFulfillment(preimage),
         },
         { autofill: true, wallet: relayWallet }
       );
-      this.log("EscrowFinish XRPL:", res.result.meta.TransactionResult);
+      const result = res.result.meta.TransactionResult;
+      // tecNO_TARGET = el escrow ya no existe: alguien más lo completó entre
+      // la comprobación y el submit. Es el resultado esperado de una carrera,
+      // no un fallo del relay.
+      resuelto = result === "tesSUCCESS" || result === "tecNO_TARGET";
+      log(resuelto ? "xrpl_finish_ok" : "xrpl_finish_fallo", {
+        swap: swap.slice(0, 12),
+        ledger: res.result.ledger_index,
+        tx: res.result.hash,
+        result,
+      });
       return res;
     } finally {
+      // Candado liberado si la pierna no quedó cerrada, para no bloquear un
+      // reintento posterior. Ojo con los dos caminos de fallo:
+      //  - excepción (red, RPC caído): propaga → tick() no persiste el cursor
+      //    → el siguiente poll vuelve a leer el evento y reintenta solo.
+      //  - resultado tec* : el ledger ya cobró el fee. NO se reintenta en bucle
+      //    a propósito; queda en el log como xrpl_finish_fallo.
+      if (!resuelto) this.inFlight.delete(swap);
       await client.disconnect();
     }
   }
@@ -209,4 +373,4 @@ class Relay {
   }
 }
 
-module.exports = { Relay, XrplWatcher, SorobanWatcher, extractPreimage, findRevealedPreimage };
+module.exports = { Relay, RelayState, XrplWatcher, SorobanWatcher, extractPreimage, findRevealedPreimage };

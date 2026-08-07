@@ -9,9 +9,10 @@ Implementación del entregable del hackathon XRPL: espejo del `AtomicSwapHTLC` d
 | Primitiva XRPL (EscrowCreate + PREIMAGE-SHA-256 + CancelAfter) | ✅ | `escrow_demo.js` — create + finish `tesSUCCESS` en testnet |
 | Traducción criptográfica Soroban ↔ XRPL | ✅ | `bridge-translate.js` + 8 tests (`bridge-translate.test.js`) |
 | Relay dos ledgers (nunca custodia) | ✅ | `relay.js` + test en vivo (`relay_test_live.js`) |
+| Relay reanudable e idempotente | ✅ | cursor persistido + re-escaneo al arrancar — `relay-state.test.js` 6/6 |
 | Swap cross-chain completo | ✅ | `demo_full_swap.js` — corrido en ambas testnets |
 | Agentes autónomos (discovery x402 → negociación → ejecución) | ✅ | `agent_a.js` + `agent_b.js` — corrido end-to-end |
-| Suite de fallos (6 escenarios de ataque/fallo) | ✅ 6/6 | `failure_suite.js` — 5.5 min contra testnets reales |
+| Suite de fallos (8 escenarios de ataque/fallo) | ✅ 8/8 | `failure_suite.js` — ~7 min contra testnets reales |
 | Escrow de TOKENS (XLS-85: IOUs, no solo XRP) | ✅ | `test_token_escrow.js` — IOU + condición + finish en testnet |
 | RLUSD específicamente | ⏳ bloqueado por Ripple | Emisora testnet (`rQhWct2f...`) sin flag `AllowTrustLineLocking` (verificado on-chain 2026-07-20). Mecanismo listo; entra cuando Ripple active el flag. |
 
@@ -65,8 +66,9 @@ npm install
 # 1. Primitiva XRPL sola (2 wallets faucet, escrow condicional)
 node escrow_demo.js
 
-# 2. Tests del módulo de traducción (offline)
+# 2. Tests offline (traducción cripto/tiempo + reanudación del relay)
 node bridge-translate.test.js
+node relay-state.test.js
 
 # 3. Relay en vivo (pierna XRPL + conectividad Soroban RPC)
 node relay_test_live.js
@@ -95,10 +97,27 @@ testnet (`stellar keys generate <alias> --network testnet --fund`).
 | 4 | Reclamo después de `CancelAfter` | `tecNO_PERMISSION`; `EscrowCancel` devuelve fondos |
 | 5 | Refund antes del timeout | Contrato rechaza (trap en `refund`) |
 | 6 | Watcher de B muerto cuando A revela | Re-escaneo de historial (`findRevealedPreimage`) recupera el secreto; B cobra igual |
+| 7 | A revela **al filo** del `CancelAfter` de B | La pierna larga en Soroban sigue viva: B cobra igual |
+| 8 | Relay reenvía sobre una pierna ya cerrada | No envía tx, no quema fee, saldo intacto |
 
 El #6 es el crítico: sin re-escaneo, un crash del watcher en la ventana entre revelación y reclamo
 significa fondos perdidos para B. Con re-escaneo, B tiene todo el margen del timeout del iniciador
 para recuperarse.
+
+El #7 caza el bug de traducir el timeout como conversión numérica: si la pierna larga expira antes
+de que la corta acabe de liquidarse, quien reveló se queda sin cobrar. Falla en el peor momento
+—cuando alguien revela tarde— así que hay que provocarlo a propósito.
+
+## Reanudación del relay
+
+El relay guarda el cursor de Soroban en `relay-state.json` (escritura atómica) y **solo lo avanza
+cuando el evento quedó atendido**: si muere a mitad de un `EscrowFinish`, al reiniciar vuelve a
+leer el mismo evento. La pierna XRPL no necesita archivo — su cursor es el historial de la cuenta,
+que se re-escanea en cada arranque.
+
+Idempotencia: la autoridad es la cadena, no el archivo. El objeto escrow desaparece del ledger al
+completarse, así que su ausencia significa "ya no hay nada que hacer" y el relay ni siquiera
+manda la transacción. `tecNO_TARGET` (alguien ganó la carrera) se trata como éxito.
 
 ## Archivos
 
@@ -117,13 +136,19 @@ para recuperarse.
 Este repo es la **implementación de referencia y la suite de fallos** del lado XRPL: scripts
 autocontenidos que se corren contra testnets reales sin levantar la API.
 
-El código que atiende usuarios vive en el producto, no aquí:
-`micopay-protocol/apps/api/src/services/xrpl.service.ts` (primitivas HTLC) y
-`relay.service.ts` (observador XRPL → release en Soroban). Cuando las dos versiones
-difieran, **manda la de `apps/api`**; este repo documenta el porqué y prueba los bordes.
+**Hoy no existe otra versión de este código.** `micopay-protocol` no tiene pierna XRPL: el
+trabajo que vivía en `apps/api/src/services/xrpl.service.ts` y `relay.service.ts` se revirtió
+el 2026-07-28 (respaldo en `Micopay Bridge/backup-apps-api-2026-07-28/`). Lo que hay allá es
+`ATOMIC_SWAP_CONTRACT_B`: una **segunda instancia de Soroban simulando la cadena B**. Esa pata
+falsa es exactamente lo que este repo viene a sustituir.
+
+Del monorepo se usa, sin modificarlo: el contrato `contracts/atomic-swap` (compilado tal cual)
+y los shapes HTTP de `packages/types` en los agentes.
 
 ## Pendiente / siguiente
 
-- Integrar los agentes al AIGENTS real (`apps/api`) — los shapes ya coinciden.
+- Sustituir `ATOMIC_SWAP_CONTRACT_B` por la pierna XRPL real en la orquestación.
+- Integrar los agentes al AIGENTS real — los shapes ya coinciden. Ojo: x402 tiene SEC-13
+  (`verifyPayment()` no consulta Horizon) y SEC-14 (anti-replay solo en RAM) abiertos.
 - Espejo del `MicopayEscrow` (seller/buyer + fee) sobre las mismas primitivas — el roadmap post-hackathon.
 - Empaque de la demo en vivo (script de presentación, explorers abiertos, wallets pre-fondeadas).

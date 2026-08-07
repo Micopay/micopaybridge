@@ -9,16 +9,20 @@
 //   5. Refund prematuro        → contrato rechaza antes del timeout
 //   6. Watcher muerto en la revelación → re-escaneo de historial recupera
 //      el secreto y la contraparte cobra igual
+//   7. Revelación AL FILO del CancelAfter → la pierna larga todavía se cobra
+//   8. Relay reenviado sobre una pierna ya cerrada → no paga dos veces
 //
 // El lock de los tests 1/5 se hace al inicio y su espera de timeout
 // (60 ledgers ≈ 5 min) corre en paralelo mientras pasan los demás tests.
 
 const { execFileSync } = require("child_process");
 const assert = require("assert");
+const os = require("os");
+const path = require("path");
 const xrpl = require("xrpl");
 const { rpc } = require("@stellar/stellar-sdk");
 const bt = require("./bridge-translate");
-const { findRevealedPreimage } = require("./relay");
+const { Relay, findRevealedPreimage } = require("./relay");
 
 const CONTRACT_ID = "CANNVHGZHVSVQO76SIVV5YNHH6ODDBV5IEROUITFTFIH6NRLF7XHRCIT";
 const NATIVE_SAC = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
@@ -222,6 +226,107 @@ async function main() {
   assert.ok(st6.includes("Released"));
   ok(6, "watcher caído: re-escaneo recuperó el secreto del historial y B cobró (Released)");
 
+  // ---------- TEST 7: revelación AL FILO del CancelAfter ----------
+  // El bug que este test caza: traducir el timeout como conversión numérica y
+  // perder el margen. Si la pierna larga expira antes de que la corta acabe de
+  // liquidarse, quien reveló se queda sin cobrar y el otro se lleva todo.
+  // A bloquea en Soroban con timeout LARGO; B abre el escrow XRPL con timeout
+  // CORTO; A revela en los últimos segundos del CancelAfter de B.
+  const p7 = bt.generatePreimage();
+  const XRPL_VENTANA_SEG = 45;
+  const sorobanVentanaSeg = bt.MIN_TIMEOUT_LEDGERS * bt.STELLAR_SECONDS_PER_LEDGER;
+  assert.ok(
+    bt.checkInvariant(sorobanVentanaSeg, XRPL_VENTANA_SEG),
+    "el escenario no vale si la pierna del iniciador no es la más larga"
+  );
+
+  const swap7 = JSON.parse(
+    stellarCli(
+      "contract", "invoke", "--id", CONTRACT_ID, "--source", A, "--",
+      "lock", "--initiator", addrA, "--counterparty", addrB, "--token", NATIVE_SAC,
+      "--amount", "1000000",
+      "--secret_hash", bt.sorobanSecretHash(p7).toString("hex"),
+      "--timeout_ledgers", String(bt.MIN_TIMEOUT_LEDGERS)
+    )
+  );
+  const info7 = JSON.parse(
+    stellarCli("contract", "invoke", "--id", CONTRACT_ID, "--source", A, "--", "get_swap", "--swap_id", swap7)
+  );
+
+  const cancelAt7 = Math.floor(Date.now() / 1000) + XRPL_VENTANA_SEG;
+  const esc7 = await client.submitAndWait(
+    {
+      TransactionType: "EscrowCreate",
+      Account: w1.address, // w1 hace de B
+      Destination: w2.address, // w2 hace de A
+      Amount: xrpl.xrpToDrops("2"),
+      Condition: bt.xrplCondition(p7),
+      CancelAfter: bt.toRippleTime(cancelAt7),
+    },
+    { autofill: true, wallet: w1 }
+  );
+  assert.strictEqual(esc7.result.meta.TransactionResult, "tesSUCCESS");
+
+  // Esperar hasta el filo: se envía con ~12 s de vida útil, poco más de dos
+  // cierres de ledger. Menos que eso mide la latencia de la red, no el invariante.
+  const MARGEN_ENVIO_SEG = 12;
+  for (;;) {
+    const restan = cancelAt7 - Math.floor(Date.now() / 1000);
+    if (restan <= MARGEN_ENVIO_SEG) break;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  const restanAlEnviar = cancelAt7 - Math.floor(Date.now() / 1000);
+  const finish7 = await client.submitAndWait(
+    {
+      TransactionType: "EscrowFinish",
+      Account: w2.address,
+      SourceTag: bt.SOURCE_TAG,
+      Owner: w1.address,
+      OfferSequence: esc7.result.tx_json.Sequence,
+      Condition: bt.xrplCondition(p7),
+      Fulfillment: bt.xrplFulfillment(p7),
+    },
+    { autofill: true, wallet: w2 }
+  );
+  assert.strictEqual(
+    finish7.result.meta.TransactionResult,
+    "tesSUCCESS",
+    `la revelación al filo no entró (quedaban ${restanAlEnviar}s de CancelAfter)`
+  );
+
+  // Lo que de verdad se prueba: tras esa revelación tardía, B TODAVÍA cobra
+  // la pierna larga en Soroban.
+  const recovered7 = await findRevealedPreimage(client, w1.address);
+  assert.ok(recovered7, "el secreto revelado al filo no aparece en el historial");
+  const { sequence: seqAlCobrar } = await soroban.getLatestLedger();
+  assert.ok(
+    seqAlCobrar < info7.timeout_ledger,
+    `la pierna larga ya había expirado (ledger ${seqAlCobrar} >= ${info7.timeout_ledger})`
+  );
+  stellarCli("contract", "invoke", "--id", CONTRACT_ID, "--source", B, "--", "release", "--swap_id", swap7, "--secret", recovered7.toString("hex"));
+  const st7 = stellarCli("contract", "invoke", "--id", CONTRACT_ID, "--source", A, "--", "get_status", "--swap_id", swap7);
+  assert.ok(st7.includes("Released"));
+  ok(7, `revelación con ${restanAlEnviar}s de margen: pierna larga cobrada (quedaban ${info7.timeout_ledger - seqAlCobrar} ledgers)`);
+
+  // ---------- TEST 8: relay idempotente sobre una pierna ya cerrada ----------
+  // El escrow del test 7 ya no existe. Reenviar el EscrowFinish no debe pagar
+  // de nuevo ni gastar fee: la ausencia del objeto en el ledger es la autoridad.
+  const { wallet: wRelay } = await client.fundWallet();
+  const relay = new Relay({
+    statePath: path.join(os.tmpdir(), `relay-state-suite-${Date.now()}.json`),
+    xrpl: {
+      escrowOwner: w1.address,
+      offerSequence: esc7.result.tx_json.Sequence,
+      relayWallet: wRelay,
+    },
+  });
+  const relayBalAntes = Number(await client.getXrpBalance(wRelay.address));
+  const reenvio = await relay.completeXrplLeg(p7);
+  const relayBalDespues = Number(await client.getXrpBalance(wRelay.address));
+  assert.strictEqual(reenvio, null, "el relay reenvió un EscrowFinish sobre una pierna ya cerrada");
+  assert.strictEqual(relayBalDespues, relayBalAntes, "el reenvío quemó fee");
+  ok(8, `relay reenviado sobre pierna cerrada: no envía tx, saldo intacto (${relayBalDespues} XRP)`);
+
   // ---------- TEST 1: timeout cumplido → refund devuelve fondos a A ----------
   console.log(`[test 1] esperando timeout del lock fantasma (ledger ${ghostSwap.timeout_ledger})...`);
   for (;;) {
@@ -234,7 +339,7 @@ async function main() {
   assert.ok(st1.includes("Refunded"));
   ok(1, "contraparte desaparecida: refund tras timeout, estado Refunded, XLM de vuelta con A");
 
-  console.log(`\n${passed}/6 tests de fallo OK en ${((Date.now() - t0) / 60000).toFixed(1)} min`);
+  console.log(`\n${passed}/8 tests de fallo OK en ${((Date.now() - t0) / 60000).toFixed(1)} min`);
   console.log("Todos los caminos de fallo dejan los fondos donde deben. Cero fondos atorados.");
   await client.disconnect();
   process.exit(0);
