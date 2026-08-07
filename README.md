@@ -149,10 +149,29 @@ rechaza el refund prematuro. El segundo, pasado el ledger 4021415, cerró la pie
 faltaba y **saltó la de XRPL porque ya estaba resuelta** — eso es la idempotencia,
 comprobada en vez de afirmada.
 
-El estado vive en `swap-store.json`, con escritura atómica y carga al arrancar. No es una
-base de datos: es el mínimo para que un reinicio no pierda de vista dinero bloqueado.
-Antes era un `Map` en RAM, y el `owner`/`offer_sequence` del escrow —lo único con lo que se
-puede cancelar— moría con el proceso.
+El estado vive en `swap-store/`, **un archivo por swap**, con escritura atómica y carga al
+arrancar. No es una base de datos: es el mínimo para que ni un reinicio ni una segunda
+instancia pierdan de vista dinero bloqueado.
+
+Un solo JSON con todos los swaps no servía: dos procesos —dos instancias detrás del
+balanceador, o un script `test:live` con la API levantada— lo cargaban, cada uno escribía
+el suyo y el segundo borraba el del primero. Con un archivo por swap, dos procesos que
+tocan swaps distintos ni se ven. Para el mismo swap hay **fusión monótona**: este estado
+solo crece —las transacciones se añaden, nunca se quitan, y el status avanza— así que dos
+escrituras concurrentes convergen en vez de pisarse.
+
+```bash
+npm run test:concurrency -w @micopay/api
+```
+
+Lanza procesos de verdad, que es lo único que prueba esto:
+
+```
+[1] swaps distintos, dos procesos → SWAP_A.json, SWAP_B.json
+    OK — los dos sobreviven
+[2] el mismo swap, dos procesos → status=released_b txs=lock_a,lock_b,release_b
+    OK — ninguna escritura perdió la de la otra
+```
 
 ### Si el proceso muere a mitad
 

@@ -14,7 +14,7 @@ export default defineConfig({
     env: {
       // El swapStore persiste en disco. En tests se desactiva: no queremos que
       // una corrida deje un swap-store.json ni que herede el de la anterior.
-      SWAP_STORE_PATH: "",
+      SWAP_STORE_DIR: "",
       // Los sondeos de confirmación esperan ledgers reales. En test no hay
       // ledger que esperar: eran ~8 s de reloj por corrida sin comprobar nada.
       SOROBAN_POLL_INTERVAL_MS: "0",
