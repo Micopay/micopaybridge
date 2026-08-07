@@ -1,0 +1,7 @@
+[package]
+name = "poseidon_preimage"
+type = "bin"
+authors = ["MicoPay ZKaaS"]
+compiler_version = ">=0.1.0"
+
+[dependencies]
