@@ -6,3 +6,5 @@ relay-state.json
 relay-state.json.tmp
 .turbo/
 target/
+dist/
+*.tsbuildinfo
