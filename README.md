@@ -10,16 +10,33 @@ salió por el split de agosto 2026. **Aquí no vive nada del APK ni de la app m�
 | Ruta | Qué es | Estado |
 |---|---|---|
 | `packages/xrpl-bridge/` | Pierna XRPL: traducción cripto/tiempo, relay de dos ledgers, suite de fallos y agentes de demo | ✅ verificado contra testnets reales — [README](packages/xrpl-bridge/README.md) |
+| `packages/types/` | Tipos compartidos | migrado |
+| `packages/sdk/` | `AtomicSwapClient` (`lock/release/refund/getStatus`) | migrado |
+| `apps/agent/` | AIGENTS: intent parser, executor, tools | migrado |
+| `apps/api/` | API de protocolo x402 | migrado **filtrado** — ver abajo |
 | `contracts/htlc-core/` | Primitivas HTLC compartidas (`MIN_TIMEOUT_LEDGERS`, TTL) | migrado tal cual |
 | `contracts/atomic-swap/` | `AtomicSwapHTLC` — el contrato que la pierna XRPL espeja | migrado tal cual |
+| `contracts/micopay-escrow/` | Escrow del **servicio x402** | migrado tal cual |
+| `contracts/zk-verifier/` | `ZkVerifierRegistry` | migrado tal cual |
+| `circuits/` | Noir: `access_credential_v1`, `poseidon_preimage`, `reputation_v1` | migrado tal cual |
+
+### Qué se quedó fuera de `apps/api`
+
+Rutas retail cuya versión viva es `micopay/backend`: `auth`, `users`, `cash`, `fund`,
+`cetes`, `blend`, `kyc`, `ramp`, `merchants`, `trade-messages`, `trades`, `stellar`.
+Con ellas se fueron sus servicios (`etherfuse`, `merchant`, `p2p`, `p2p-registry`,
+`secret`, `trade`), `db/auth.ts`, `middleware/auth.middleware.ts`, `lib/webhook-auth.ts`,
+`lib/trade-auth.ts`, sus tests y la migración `002_etherfuse_ramp.sql`.
+
+`routes/agent.ts` y `routes/swaps.ts` se migran pero **no están registrados** en
+`index.ts` — tampoco lo estaban en el origen. Cablearlos es una decisión de producto,
+no de migración.
 
 ## Qué falta migrar
 
-Del inventario del plan de split, siguen en `micopay-protocol`: `apps/api` (filtrado),
-`apps/agent`, `apps/web` (filtrado), `packages/sdk`, `packages/types`, `circuits/`,
-`contracts/zk-verifier`, `contracts/micopay-badges` y `contracts/micopay-escrow` — este
-último el del **servicio x402**, no el del móvil. Son dos contratos distintos que
-divergieron en abril y no se deben mezclar.
+`apps/web` (filtrado) y `contracts/micopay-badges`, este último **sin decidir**: el plan
+lo deja abierto en §2.3 y no aparece referenciado ni en `render.yaml` ni en
+`.env.example`.
 
 ## La frontera entre los dos repos
 

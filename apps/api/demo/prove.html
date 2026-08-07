@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ZKaaS Browser Proving Benchmark — MicoPay</title>
+  <style>
+    body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 2rem; max-width: 800px; margin: auto; }
+    h1 { color: #58a6ff; }
+    pre { background: #161b22; border: 1px solid #30363d; padding: 1rem; border-radius: 6px; white-space: pre-wrap; word-break: break-all; }
+    button { background: #238636; color: #fff; border: none; padding: 0.5rem 1.5rem; border-radius: 6px; cursor: pointer; font-size: 1rem; margin-top: 1rem; }
+    button:disabled { background: #444; cursor: not-allowed; }
+    .warn { color: #f0883e; }
+    .ok   { color: #3fb950; }
+    .err  { color: #f85149; }
+    input { background: #161b22; border: 1px solid #30363d; color: #c9d1d9; padding: 0.3rem 0.6rem; border-radius: 4px; font-family: monospace; width: 100%; box-sizing: border-box; margin-top: 0.3rem; }
+  </style>
+</head>
+<body>
+<h1>ZKaaS Browser Proving Benchmark</h1>
+<p>
+  Generates a <code>reputation_v1</code> UltraHonk proof in-browser using
+  <code>@noir-lang/noir_js</code> + <code>@aztec/bb.js</code> (WASM),
+  then verifies it on-chain via <code>POST /api/v1/zk/verify</code>.
+</p>
+
+<h2>Compatibility status</h2>
+<pre class="warn">
+⚠  COMPATIBILITY NOTE (as of 2026-06-15)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Toolchain pins for this repo:
+  nargo  1.0.0-beta.9
+  bb     0.87.0
+
+The @noir-lang/noir_js + @aztec/bb.js npm packages expose matching
+WASM builds, BUT the ESM/WASM bundle for bb 0.87.x requires:
+
+  1. SharedArrayBuffer (requires COOP/COEP headers)
+  2. Threads (WASM threads via SharedArrayBuffer)
+
+These headers must be set on the server serving this file:
+
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+
+Without them, the WASM thread pool fails to initialize.
+
+STATUS: This benchmark page is READY to be wired once the dev server
+sets those headers. The proving logic below is correct; swap in the
+real circuit JSON path to activate it.
+
+Fallback (current demo): proving runs server-side in WSL2 via the
+run_demo_b.sh script. This is a known trade-off — the secret leaves
+the "device" (WSL2 is still the user's machine), but the privacy
+model is slightly weaker than in-browser proving. Documented honestly.
+
+See: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer#security_requirements
+</pre>
+
+<h2>Configuration</h2>
+<label>API URL (e.g. http://localhost:3000)</label>
+<input id="apiUrl" value="http://localhost:3000" />
+<label style="margin-top:1rem;display:block;">Payment header (X402_MOCK_MODE=true: use "mock:GADDR:0.001")</label>
+<input id="payment" value="mock:GPAYER000000000000000000000000000000000000000000000000000:0.001" />
+
+<button id="runBtn" onclick="runBench()">Run in-browser benchmark</button>
+
+<h2>Log</h2>
+<pre id="log">Waiting…</pre>
+
+<script type="module">
+// ── Helpers ───────────────────────────────────────────────────────────────
+function log(msg, cls = "") {
+  const el = document.getElementById("log");
+  el.innerHTML += `<span class="${cls}">${msg}</span>\n`;
+  el.scrollTop = el.scrollHeight;
+}
+
+async function checkHeaders() {
+  if (typeof SharedArrayBuffer === "undefined") {
+    log("✗ SharedArrayBuffer unavailable — COOP/COEP headers missing on this server.", "err");
+    log("  Set on the server:\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp", "warn");
+    return false;
+  }
+  log("✓ SharedArrayBuffer available", "ok");
+  return true;
+}
+
+window.runBench = async function () {
+  const btn = document.getElementById("runBtn");
+  btn.disabled = true;
+  document.getElementById("log").textContent = "";
+
+  log("── ZKaaS Browser Proving Benchmark ──");
+
+  const ok = await checkHeaders();
+  if (!ok) {
+    log("\nCannot proceed. Serve this file with the required COOP/COEP headers.", "err");
+    btn.disabled = false;
+    return;
+  }
+
+  try {
+    log("Loading @noir-lang/noir_js…");
+    // Dynamic import — will fail if not bundled/served correctly
+    const { Noir } = await import("https://esm.sh/@noir-lang/noir_js@1.0.0-beta.9");
+    log("✓ Noir loaded", "ok");
+
+    log("Loading @aztec/bb.js…");
+    const { UltraHonkBackend } = await import("https://esm.sh/@aztec/bb.js@0.87.0");
+    log("✓ bb.js loaded", "ok");
+
+    // Circuit JSON — must be served alongside this page or fetched from API
+    log("Fetching circuit JSON (reputation_v1)…");
+    const circuitRes = await fetch("./reputation_v1.json");
+    if (!circuitRes.ok) throw new Error(`Circuit JSON not found: ${circuitRes.status}. Copy circuits/reputation_v1/target/reputation_v1.json here.`);
+    const circuit = await circuitRes.json();
+    log("✓ Circuit loaded", "ok");
+
+    const backend = new UltraHonkBackend(circuit.bytecode);
+    const noir    = new Noir(circuit, backend);
+
+    // Alice's demo inputs (depth-20 sparse tree, all siblings = 0)
+    const inputs = {
+      secret:       "1001",
+      tier:         "3",
+      path_elements: Array(20).fill("0"),
+      path_index:    Array(20).fill("0"),
+      merkle_root:  "0x079fa7cd6ecb9dc5b48eedf99357995c04771a815c19072ac63b0f1265868bd5",
+      tier_threshold: "2",
+      context:      "42",
+      nullifier:    "0x1b7d99efaf246eb3489deefcff6b29541e57fbc7c048da3713b00df3e84eccc2",
+    };
+
+    log("\nGenerating UltraHonk proof (depth-20 Merkle circuit)…");
+    const t0 = performance.now();
+    const { proof, publicInputs } = await noir.generateProof(inputs);
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+    log(`✓ Proof generated in ${elapsed}s (${proof.length} bytes)`, "ok");
+
+    // Convert proof to base64 and public_inputs to decimal strings
+    const proofB64 = btoa(String.fromCharCode(...proof));
+    const piDec   = publicInputs.map(v => BigInt(v).toString(10));
+
+    log("\nPosting to ZKaaS API…");
+    const apiUrl  = document.getElementById("apiUrl").value.trim();
+    const payment = document.getElementById("payment").value.trim();
+
+    const res = await fetch(`${apiUrl}/api/v1/zk/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Payment": payment },
+      body: JSON.stringify({ circuit_id: "reputation_v1", proof: proofB64, public_inputs: piDec }),
+    });
+    const body = await res.json();
+    log(`API status: ${res.status}`, res.ok ? "ok" : "err");
+    log(`Response: ${JSON.stringify(body, null, 2)}`, body.verified ? "ok" : "warn");
+
+    if (body.verified) {
+      log(`\n✓ End-to-end in-browser ZKaaS round trip complete in ${elapsed}s`, "ok");
+    }
+  } catch (err) {
+    log(`\n✗ ${err.message}`, "err");
+    if (err.message.includes("esm.sh")) {
+      log("  Tip: run this page from a bundler (Vite/Webpack) that resolves node_modules instead of esm.sh.", "warn");
+    }
+  }
+
+  btn.disabled = false;
+};
+</script>
+</body>
+</html>

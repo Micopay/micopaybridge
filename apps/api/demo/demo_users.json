@@ -1,0 +1,26 @@
+{
+  "users": [
+    {
+      "id": "alice",
+      "secret": "1001",
+      "tier": 3,
+      "tier_name": "GOLD",
+      "description": "Active Micopay P2P trader, 50+ completed exchanges"
+    },
+    {
+      "id": "bob",
+      "secret": "1002",
+      "tier": 2,
+      "tier_name": "SILVER",
+      "description": "Occasional trader, 10+ completed exchanges"
+    },
+    {
+      "id": "charlie",
+      "secret": "1003",
+      "tier": 1,
+      "tier_name": "BRONZE",
+      "description": "New user, first exchange completed"
+    }
+  ],
+  "_comment": "Demo seed data. Secrets never leave the client; only leaf hashes appear on-chain."
+}
