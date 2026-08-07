@@ -368,8 +368,10 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
           swap_id: lock.swapId,
         },
         agent_reputation_updated: true,
-        note: "Stellar side locked. AtomicSwapHTLC (built + tested) resolves the counterpart chain in production.",
-        next_step: "Agent B locks counterpart asset using shared secret_hash. Revealing secret on Chain B gives initiator claim rights here.",
+        // La pierna contraria ya no es "en producción": es un escrow nativo de
+        // XRPL y corre en POST /api/v1/swaps/execute (§M4.5 del plan).
+        note: "Stellar side locked. The counterpart leg runs as a native XRPL escrow (PREIMAGE-SHA-256 + CancelAfter) — see POST /api/v1/swaps/execute.",
+        next_step: "Agent B locks XRP with an EscrowCreate carrying the same secret_hash. Revealing the preimage on XRPL gives the initiator claim rights here.",
       });
     }
   );
