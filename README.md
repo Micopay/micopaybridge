@@ -115,6 +115,18 @@ Los dos **sin x402**: cobrar por devolver fondos que se quedaron atrapados serí
 incentivo equivocado. El refund es idempotente y se reintenta: ninguna de las dos cadenas
 permite reembolsar antes de su timeout, así que `pending` es lo normal al principio.
 
+Probado recuperando un swap que se quedó colgado de verdad, no un caso inventado:
+
+| Pierna | Cadena | Tx | Resultado |
+|---|---|---|---|
+| B | XRPL | `AA01EBDDB9B59A8E9E709A09BD81C3855A63E23E05486B40A85CB54B1E4E2D06` | `EscrowCancel`, XRP devuelto |
+| A | Soroban | `06662012c9a94d663242bb783daf87eb0be5a7561849541e6580cb7b42a592ff` | `get_status` → `"Refunded"` |
+
+El primer intento devolvió `pending`: faltaban 82 ledgers para el timeout y el contrato
+rechaza el refund prematuro. El segundo, pasado el ledger 4021415, cerró la pierna que
+faltaba y **saltó la de XRPL porque ya estaba resuelta** — eso es la idempotencia,
+comprobada en vez de afirmada.
+
 El estado vive en `swap-store.json`, con escritura atómica y carga al arrancar. No es una
 base de datos: es el mínimo para que un reinicio no pierda de vista dinero bloqueado.
 Antes era un `Map` en RAM, y el `owner`/`offer_sequence` del escrow —lo único con lo que se
