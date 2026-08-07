@@ -20,6 +20,7 @@ salió por el split de agosto 2026. **Aquí no vive nada del APK ni de la app m�
 | `contracts/micopay-escrow/` | Escrow del **servicio x402** | migrado tal cual |
 | `contracts/zk-verifier/` | `ZkVerifierRegistry` | migrado tal cual |
 | `circuits/` | Noir: `access_credential_v1`, `poseidon_preimage`, `reputation_v1` | migrado tal cual |
+| `docs/` | Especificaciones ZK, auditorías y planes | migrado tal cual — [leer con advertencia](docs/README.md) |
 
 ### Qué se quedó fuera de `apps/api`
 
@@ -48,6 +49,10 @@ como material del demo, y es donde entrará la pierna XRPL cuando sustituya a
 
 Solo `contracts/micopay-badges`, y está **sin decidir**: el plan lo deja abierto en §2.3
 y no aparece referenciado ni en `render.yaml` ni en `.env.example`.
+
+`docs/xrpl-hackathon/`, que el §2.1 también lista, **no existe** en el repo origen:
+buscado en todas las ramas remotas y en la historia completa. Ver
+[SUBMISSION_CORRECCIONES.md](docs/SUBMISSION_CORRECCIONES.md).
 
 ## La frontera entre los dos repos
 
