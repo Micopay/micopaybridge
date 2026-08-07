@@ -4,6 +4,13 @@
   "private": true,
   "description": "Pierna XRPL del atomic swap HTLC: traducción cripto/tiempo, relay de dos ledgers y suite de fallos.",
   "main": "relay.js",
+  "exports": {
+    "./bridge-translate": {
+      "types": "./bridge-translate.d.ts",
+      "default": "./bridge-translate.js"
+    },
+    "./relay": "./relay.js"
+  },
   "scripts": {
     "test": "node bridge-translate.test.js && node relay-state.test.js",
     "test:live": "node failure_suite.js"

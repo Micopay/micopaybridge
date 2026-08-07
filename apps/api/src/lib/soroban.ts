@@ -1,17 +1,21 @@
 /**
- * Soroban contract invocation helpers.
- * Ported from scripts/demo-atomic-swap.mjs to TypeScript.
+ * Orquestación del atomic swap de dos piernas — Soroban ↔ XRPL.
  *
- * Executes the 4-step AtomicSwap HTLC flow:
- *   1. Initiator locks sell_asset in Contract A
- *   2. Counterparty locks buy_asset in Contract B (same secret_hash)
- *   3. Initiator reveals secret on B → gets buy_asset
- *   4. Counterparty uses public secret on A → gets sell_asset
+ *   1. El iniciador bloquea sell_asset en AtomicSwapHTLC (Soroban), timeout LARGO
+ *   2. La contraparte bloquea XRP en un escrow de XRPL con la MISMA condición,
+ *      timeout CORTO
+ *   3. El iniciador revela la preimagen en XRPL y cobra el XRP
+ *   4. La contraparte usa esa preimagen —ya pública— para cobrar en Soroban
+ *
+ * Hasta M4.5 el paso 2 iba contra ATOMIC_SWAP_CONTRACT_B, una segunda
+ * instancia del mismo contrato de Soroban. Era una pierna simulada: las dos
+ * mitades vivían en la misma cadena, así que el swap no cruzaba nada.
  */
 
 import * as StellarSdk from "@stellar/stellar-sdk";
-import crypto from "crypto";
+import * as bt from "@micopaybridge/xrpl-bridge/bridge-translate";
 import { swapStore, type SwapState } from "./swapStore.js";
+import { lockXrplLeg, revealOnXrpl, xrplAddressFromSeed } from "./xrpl-leg.js";
 
 const RPC_URL = process.env.STELLAR_RPC_URL ?? "https://soroban-testnet.stellar.org";
 const NET      = StellarSdk.Networks.TESTNET;
@@ -82,16 +86,29 @@ async function invokeContract(
   throw new Error(`Timeout waiting for tx [${method}]: ${result.hash}`);
 }
 
+export interface XrplLegConfig {
+  /** Semilla de quien bloquea el XRP (la contraparte). */
+  counterpartySeed: string;
+  /** Semilla de quien revela y cobra el XRP (el iniciador). */
+  initiatorSeed: string;
+}
+
 /**
- * Runs the full 4-step AtomicSwap HTLC in background.
- * Updates swapStore at each step so the status endpoint can track progress.
+ * Corre el swap completo en segundo plano, actualizando swapStore en cada
+ * paso para que el endpoint de estado pueda seguirlo.
+ *
+ * Nota de custodia, para que no se lea de más: la API firma con SUS PROPIAS
+ * llaves de demo (PLATFORM_SECRET_KEY, DEMO_AGENT_SECRET_KEY y las dos
+ * semillas de XRPL), no con las de ningún usuario. Es un demo donde la
+ * plataforma hace de las dos partes. El flujo no custodio de dos agentes
+ * independientes es el de packages/xrpl-bridge (agent_a.js / agent_b.js).
  */
 export async function executeAtomicSwapBackground(
   swapId:          string,
   initiatorSecret: string,
   counterpartySecret: string,
   contractA:       string,
-  contractB:       string,
+  xrplLeg:         XrplLegConfig,
   sellAsset:       string,
   sellAmount:      number,
   buyAsset:        string,
@@ -103,62 +120,94 @@ export async function executeAtomicSwapBackground(
     const current = swapStore.get(swapId)!;
     swapStore.set(swapId, { ...current, ...patch, updated_at: new Date().toISOString() });
   };
+  const txs = () => swapStore.get(swapId)!.txs;
 
   const initiatorKP    = StellarSdk.Keypair.fromSecret(initiatorSecret);
   const counterpartyKP = StellarSdk.Keypair.fromSecret(counterpartySecret);
 
-  // Generate HTLC secret
-  const secretBytes = crypto.randomBytes(32);
+  // Una sola preimagen gobierna las dos piernas. La condition de XRPL se
+  // deriva de este mismo hash, nunca de uno independiente: si se generaran
+  // por separado no sería un swap atómico, serían dos escrows sin relación.
+  const secretBytes = bt.generatePreimage();
   const secret      = secretBytes.toString("hex");
-  const secretHash  = crypto.createHash("sha256").update(secretBytes).digest("hex");
-  const htlcSwapId  = crypto.createHash("sha256").update(Buffer.from(secretHash, "hex")).digest("hex");
+  const secretHash  = bt.sorobanSecretHash(secretBytes);
+  const htlcSwapId  = bt.sorobanSwapId(secretBytes).toString("hex");
 
   const sellToken = tokenSac(sellAsset);
-  const buyToken  = tokenSac(buyAsset);
   const sellAmt   = BigInt(Math.round(sellAmount * 10_000_000));
-  const buyAmt    = BigInt(Math.round(buyAmount  * 10_000_000));
 
   try {
-    update({ status: "locking_a", secret_hash: secretHash });
+    if (buyAsset !== "XRP") {
+      throw new Error(`La pierna B es XRPL: buy_asset debe ser XRP, llegó ${buyAsset}`);
+    }
 
-    // Step 1 — Initiator locks sell_asset in Contract A
+    // El invariante se comprueba en reloj de pared, no en unidades nativas.
+    // Cruzar de ledgers de Stellar a época Ripple es donde se pierde en
+    // silencio, y se paga en el peor momento: cuando alguien revela tarde.
+    const initiatorWallClockSec    = initiatorLedgers * bt.STELLAR_SECONDS_PER_LEDGER;
+    const counterpartyWallClockSec = counterpartyLedgers * bt.STELLAR_SECONDS_PER_LEDGER;
+    if (!bt.checkInvariant(initiatorWallClockSec, counterpartyWallClockSec)) {
+      throw new Error(
+        `Invariante roto: la pierna del iniciador (${initiatorWallClockSec}s) no dura más ` +
+        `que la de la contraparte (${counterpartyWallClockSec}s)`
+      );
+    }
+
+    update({ status: "locking_a", secret_hash: secretHash.toString("hex") });
+
+    // Paso 1 — el iniciador bloquea en Soroban, con el timeout LARGO
     const lockAHash = await invokeContract(initiatorKP, contractA, "lock", [
       addressVal(initiatorKP.publicKey()),
       addressVal(counterpartyKP.publicKey()),
       addressVal(sellToken),
       i128Val(sellAmt),
-      bytesVal(secretHash),
+      bytesVal(secretHash.toString("hex")),
       u32Val(initiatorLedgers),
     ]);
-    update({ status: "locked_a", txs: { lock_a: lockAHash } });
+    update({ status: "locked_a", txs: { ...txs(), lock_a: lockAHash } });
 
-    // Step 2 — Counterparty locks buy_asset in Contract B
+    // Paso 2 — la contraparte bloquea XRP con el timeout CORTO. Solo conoce
+    // el hash: la preimagen no sale de este proceso hasta el paso 3.
     update({ status: "locking_b" });
-    const lockBHash = await invokeContract(counterpartyKP, contractB, "lock", [
-      addressVal(counterpartyKP.publicKey()),
-      addressVal(initiatorKP.publicKey()),
-      addressVal(buyToken),
-      i128Val(buyAmt),
-      bytesVal(secretHash),
-      u32Val(counterpartyLedgers),
-    ]);
-    update({ status: "locked_b", txs: { ...swapStore.get(swapId)!.txs, lock_b: lockBHash } });
+    const escrow = await lockXrplLeg({
+      counterpartySeed:   xrplLeg.counterpartySeed,
+      destinationAddress: xrplAddressFromSeed(xrplLeg.initiatorSeed),
+      amountXrp:          String(buyAmount),
+      secretHash,
+      cancelAfterUnix:    Math.floor(Date.now() / 1000) + counterpartyWallClockSec,
+    });
+    update({
+      status: "locked_b",
+      txs: { ...txs(), lock_b: escrow.hash },
+      // Se guarda ANTES de revelar: si el proceso muere en el paso 3, esto es
+      // lo único con lo que se puede cancelar el escrow y recuperar el XRP.
+      xrpl: {
+        owner:          escrow.owner,
+        offer_sequence: escrow.offerSequence,
+        destination:    escrow.destination,
+        condition:      escrow.condition,
+        cancel_after:   escrow.cancelAfter,
+      },
+    });
 
-    // Step 3 — Initiator reveals secret on Contract B → gets buy_asset
+    // Paso 3 — el iniciador revela en XRPL y cobra. La preimagen queda
+    // pública en el ledger; nadie tiene que pasársela a nadie.
     update({ status: "releasing_b" });
-    const relBHash = await invokeContract(initiatorKP, contractB, "release", [
-      bytesVal(htlcSwapId),
-      bytesVal(secret),
-    ]);
-    update({ status: "released_b", txs: { ...swapStore.get(swapId)!.txs, release_b: relBHash } });
+    const revealed = await revealOnXrpl({
+      initiatorSeed: xrplLeg.initiatorSeed,
+      owner:         escrow.owner,
+      offerSequence: escrow.offerSequence,
+      preimage:      secretBytes,
+    });
+    update({ status: "released_b", txs: { ...txs(), release_b: revealed.hash } });
 
-    // Step 4 — Counterparty uses public secret on Contract A → gets sell_asset
+    // Paso 4 — la contraparte usa esa preimagen ya pública para cobrar en Soroban
     update({ status: "releasing_a" });
     const relAHash = await invokeContract(counterpartyKP, contractA, "release", [
       bytesVal(htlcSwapId),
       bytesVal(secret),
     ]);
-    update({ status: "completed", txs: { ...swapStore.get(swapId)!.txs, release_a: relAHash } });
+    update({ status: "completed", txs: { ...txs(), release_a: relAHash } });
 
   } catch (err) {
     update({ status: "failed", error: String(err) });

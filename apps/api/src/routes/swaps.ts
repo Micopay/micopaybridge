@@ -1,9 +1,19 @@
 import type { FastifyInstance } from "fastify";
 import { requirePayment } from "../middleware/x402.js";
 import type { CounterpartyInfo } from "@micopay/types";
-import { swapStore } from "../lib/swapStore.js";
+import { swapStore, TX_CHAIN, type SwapState } from "../lib/swapStore.js";
 
-const EXPLORER = "https://stellar.expert/explorer/testnet/tx";
+// Un explorador por cadena. Antes todas las txs se enlazaban a stellar.expert;
+// desde M4.5 la pierna B vive en XRPL y ese enlace daría 404 — peor, haría
+// parecer inexistente una transacción que sí ocurrió.
+const EXPLORERS = {
+  stellar: "https://stellar.expert/explorer/testnet/tx",
+  xrpl: "https://testnet.xrpl.org/transactions",
+} as const;
+
+function txLink(key: keyof SwapState["txs"], hash: string): string {
+  return `${EXPLORERS[TX_CHAIN[key]]}/${hash}`;
+}
 
 const HORIZON_URL = "https://horizon-testnet.stellar.org";
 
@@ -167,10 +177,10 @@ export async function swapRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(404).send({ error: "Swap not found", swap_id: id });
       }
 
-      // Attach stellar.expert links for any confirmed txs
+      // Cada tx a su explorador: la pierna A es Soroban, la B es XRPL
       const txLinks: Record<string, string> = {};
       for (const [key, hash] of Object.entries(swap.txs)) {
-        if (hash) txLinks[key] = `${EXPLORER}/${hash}`;
+        if (hash) txLinks[key] = txLink(key as keyof SwapState["txs"], hash);
       }
 
       return reply.send({
@@ -180,6 +190,12 @@ export async function swapRoutes(fastify: FastifyInstance): Promise<void> {
         sell:       `${swap.sell_amount} ${swap.sell_asset}`,
         buy:        `${swap.buy_amount} ${swap.buy_asset}`,
         secret_hash: swap.secret_hash,
+        chain_a:    "stellar",
+        chain_b:    swap.chain_b,
+        // owner + offer_sequence identifican el escrow en XRPL: sin los dos no
+        // se puede ni completar ni cancelar. Se exponen para que un operador
+        // pueda actuar sobre la pierna B sin entrar al proceso.
+        xrpl:       swap.xrpl,
         txs:        swap.txs,
         tx_links:   txLinks,
         error:      swap.error,

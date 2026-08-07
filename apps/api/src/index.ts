@@ -12,6 +12,8 @@ import { zkRoutes } from "./routes/zk.js";
 import { inferenceRoutes } from "./routes/inference.js";
 import { credentialRoutes } from "./routes/credentials.js";
 import { bazaarRoutes } from "./routes/bazaar.js";
+import { agentRoutes } from "./routes/agent.js";
+import { swapRoutes } from "./routes/swaps.js";
 import { config } from "./config.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
@@ -104,10 +106,13 @@ export async function createApp() {
   // micopay-protocol: su versión viva es micopay/backend. Ver §3.2 del plan
   // de split.
   //
-  // agent.ts y swaps.ts existen en routes/ pero nunca estuvieron registrados
-  // aquí, ni en el origen. Se migran tal cual, sin cablearlos: registrarlos
-  // sería un cambio de comportamiento disfrazado de migración.
+  // agent.ts y swaps.ts llevaban sin registrar desde el origen: el plan y el
+  // ejecutor del swap existían pero no eran alcanzables por HTTP. Se cablean
+  // en M4.5, porque el entregable es el flujo lock → reveal → claim de punta
+  // a punta y sin esto no hay punta.
   app.register(healthRoutes);
+  app.register(agentRoutes);
+  app.register(swapRoutes);
   app.register(reputationRoutes);
   app.register(serviceRoutes);
   app.register(demoRoutes);

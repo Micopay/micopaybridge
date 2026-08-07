@@ -74,6 +74,42 @@ avisar**.
 Copia plana desde `micopay-protocol` en `0b81a78`. No se trajo historia: para rastrear un
 archivo hay que buscarlo en el repo de origen a esa altura.
 
+## El swap de dos piernas
+
+`POST /api/v1/swaps/execute` corre el flujo completo. La pierna B **ya no es una segunda
+instancia de Soroban**: es un escrow nativo de XRPL.
+
+```
+1. lock A   Soroban  AtomicSwapHTLC.lock(secret_hash)        timeout LARGO
+2. lock B   XRPL     EscrowCreate(Condition, CancelAfter)    timeout CORTO
+3. reveal   XRPL     EscrowFinish(Fulfillment) → preimagen pública en el ledger
+4. release  Soroban  AtomicSwapHTLC.release(secret)
+```
+
+Una sola preimagen gobierna las dos piernas: el fingerprint de la `Condition` de XRPL **es**
+el `secret_hash` que valida Soroban. Si se generaran por separado no habría swap atómico,
+sino dos escrows sin relación.
+
+Corrido contra ambas testnets, 24 s de punta a punta:
+
+| Paso | Cadena | Tx |
+|---|---|---|
+| lock A | Soroban | `6b5f0865c9daedf8a5c370dabecc2e32bf1f46568f6304b7f09aaf1dfb21f3ab` |
+| lock B | XRPL | `41BBE9B40A23B5D699482B5DF12995E791636DD3A4D5B16357548D33D836B229` |
+| reveal | XRPL | `591610E4143F041B3A2C9CCD343FF7291FC4BCB8B3446C740F5AFE187ECBFB3E` |
+| release A | Soroban | `d668659c9a0099c40b37380c48eb7aa7a73d4ce0d012cc92b3c471af9eccf1bb` |
+
+`secret_hash` = `8593e67e…4a6868`, `condition` = `A0258020` + ese mismo hash + `810120`.
+
+```bash
+npm run test:live -w @micopay/api
+```
+
+**Custodia, dicho con precisión:** en este flujo la API firma con **sus propias llaves de
+demo** —hace de las dos partes— no con las de ningún usuario. El flujo no custodio entre
+dos agentes independientes es el de [`packages/xrpl-bridge`](packages/xrpl-bridge/README.md)
+(`agent_a.js` / `agent_b.js`).
+
 ## Desarrollo
 
 ```bash

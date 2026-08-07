@@ -148,7 +148,10 @@ y los shapes HTTP de `packages/types` en los agentes.
 
 ## Pendiente / siguiente
 
-- Sustituir `ATOMIC_SWAP_CONTRACT_B` por la pierna XRPL real en la orquestación.
+- ~~Sustituir `ATOMIC_SWAP_CONTRACT_B` por la pierna XRPL real en la orquestación.~~
+  **Hecho** — `apps/api/src/lib/xrpl-leg.ts` consume este paquete y
+  `executeAtomicSwapBackground` ya corre las dos piernas de verdad.
+  Se prueba con `npm run test:live -w @micopay/api`.
 - Integrar los agentes al AIGENTS real — los shapes ya coinciden. Ojo: x402 tiene SEC-13
   (`verifyPayment()` no consulta Horizon) y SEC-14 (anti-replay solo en RAM) abiertos.
 - Espejo del `MicopayEscrow` (seller/buyer + fee) sobre las mismas primitivas — el roadmap post-hackathon.

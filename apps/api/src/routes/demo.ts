@@ -261,8 +261,11 @@ export async function demoRoutes(
         total_paid_usdc: "0.1215",
         user_received: "$500 MXN en efectivo físico",
         steps,
+        // Este guion enseña el lado Stellar. La contraparte real ya no es
+        // otro contrato de Soroban: es un escrow nativo de XRPL, y el swap de
+        // dos piernas se ejecuta en POST /api/v1/swaps/execute (§M4.5).
         framing:
-          "Cross-chain intent coordinated via Bazaar. Stellar side anchored on Soroban. AtomicSwapHTLC (built + 37 tests) resolves the counterpart chain in production.",
+          "Cross-chain intent coordinated via Bazaar. Stellar side anchored on Soroban. The counterpart leg runs as a native XRPL escrow (PREIMAGE-SHA-256 + CancelAfter) — see POST /api/v1/swaps/execute.",
         summary:
           "From cross-chain intent to physical cash in Mexico — trustless, no API keys, no bank.",
       });

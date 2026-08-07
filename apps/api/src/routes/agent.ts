@@ -5,9 +5,11 @@ import { planStore, swapStore } from "../lib/swapStore.js";
 import { executeAtomicSwapBackground } from "../lib/soroban.js";
 
 const CONTRACT_A = process.env.ATOMIC_SWAP_CONTRACT_A ?? "CCDOUXIXSFXT2HTJAJGFNUJN6CKCYX2M6AL2BHHPEF6ISNHP2BGLS4KX";
-const CONTRACT_B = process.env.ATOMIC_SWAP_CONTRACT_B ?? "CBLCGG44QQILWEIVBXDSZSLH7NI7SGJQKXQ7WTKP3W3YSXOBTGMZKSNN";
+// ATOMIC_SWAP_CONTRACT_B ya no existe. Era una segunda instancia del mismo
+// contrato de Soroban simulando la cadena B; la sustituye el escrow nativo de
+// XRPL (§M4.5 del plan). Ver lib/xrpl-leg.ts.
 
-const ALLOWED_ASSETS = new Set(["USDC", "XLM", "MXNe"]);
+const ALLOWED_ASSETS = new Set(["USDC", "XLM", "MXNe", "XRP"]);
 const MAX_AMOUNT_USD = 100; // Maximum amount per swap (USD)
 const DEMO_AGENT_ADDRESS = process.env.DEMO_AGENT_PUBLIC_KEY ?? "GDEMOAGENTADDRESSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"; // Placeholder, should be set in env
 
@@ -323,6 +325,23 @@ export async function agentRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(503).send({ error: "Demo keypairs not configured" });
       }
 
+      // La pierna B es XRPL desde M4.5: hacen falta las dos semillas del demo.
+      const xrplInitiatorSeed    = process.env.XRPL_INITIATOR_SEED;
+      const xrplCounterpartySeed = process.env.XRPL_COUNTERPARTY_SEED;
+      if (!xrplInitiatorSeed || !xrplCounterpartySeed) {
+        return reply.status(503).send({
+          error: "XRPL demo wallets not configured",
+          hint: "XRPL_INITIATOR_SEED y XRPL_COUNTERPARTY_SEED — fondéalas en el faucet de testnet",
+        });
+      }
+
+      if (plan.buy_asset !== "XRP") {
+        return reply.status(400).send({
+          error: "La pierna B corre en XRPL: buy_asset debe ser XRP",
+          got: plan.buy_asset,
+        });
+      }
+
       const swapId = `swap_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const now    = new Date().toISOString();
 
@@ -335,18 +354,19 @@ export async function agentRoutes(fastify: FastifyInstance): Promise<void> {
         sell_amount: plan.sell_amount,
         buy_asset:   plan.buy_asset,
         buy_amount:  plan.buy_amount,
+        chain_b:     "xrpl",
         txs:         {},
         created_at:  now,
         updated_at:  now,
       });
 
-      // Run the 4 contract calls in background — do NOT await
+      // Las 4 operaciones corren en segundo plano — do NOT await
       executeAtomicSwapBackground(
         swapId,
         initiatorSecret,
         counterpartySecret,
         CONTRACT_A,
-        CONTRACT_B,
+        { initiatorSeed: xrplInitiatorSeed, counterpartySeed: xrplCounterpartySeed },
         plan.sell_asset,
         parseFloat(plan.sell_amount),
         plan.buy_asset,
