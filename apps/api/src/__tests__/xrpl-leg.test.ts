@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest";
 import { Keypair } from "@stellar/stellar-sdk";
 import * as bt from "@micopaybridge/xrpl-bridge/bridge-translate";
 import { executeAtomicSwapBackground } from "../lib/soroban.js";
-import { swapStore, TX_CHAIN, type SwapState } from "../lib/swapStore.js";
+import { swapStore, pendingRefunds, TX_CHAIN, type SwapState } from "../lib/swapStore.js";
 
 function seedSwap(swapId: string, buyAsset: string): void {
   const now = new Date().toISOString();
@@ -68,6 +68,53 @@ describe("pierna XRPL — guardas de la orquestación", () => {
     expect(swap.status).toBe("failed");
     expect(swap.error).toContain("Invariante roto");
     expect(swap.txs).toEqual({});
+  });
+
+  it("rechaza una ventana de XRPL por debajo del piso, aunque el invariante pase", async () => {
+    // REGRESIÓN. Con counterparty=1 ledger el invariante pasa (1200s > 5s) y
+    // aun así el swap muere: verificado contra testnet el 2026-08-07, la
+    // ventana de 5s se cerró antes del EscrowFinish (tecNO_PERMISSION) y dejó
+    // 0.1 XLM bloqueados en Soroban. Comprobar solo el invariante no basta.
+    expect(bt.checkInvariant(240 * 5, 1 * 5)).toBe(true);
+
+    const swap = await run("swap_sin_piso", { buyAsset: "XRP", initiatorLedgers: 240, counterpartyLedgers: 1 });
+
+    expect(swap.status).toBe("failed");
+    expect(swap.error).toContain("demasiado corto");
+    expect(swap.txs).toEqual({});
+  });
+
+  it("el piso de XRPL sale del mismo mínimo que exige el contrato de Soroban", () => {
+    expect(bt.MIN_COUNTERPARTY_TIMEOUT_SEC).toBe(bt.MIN_TIMEOUT_LEDGERS * bt.STELLAR_SECONDS_PER_LEDGER);
+    expect(() => bt.assertTimeoutsSafe(1200, bt.MIN_COUNTERPARTY_TIMEOUT_SEC)).not.toThrow();
+    expect(() => bt.assertTimeoutsSafe(1200, bt.MIN_COUNTERPARTY_TIMEOUT_SEC - 1)).toThrow(/demasiado corto/);
+  });
+
+  it("un fallo con fondos ya bloqueados queda como refund_pending, no como failed", async () => {
+    // failed suena a "no pasó nada". Si hay un lock, hay dinero parado y
+    // alguien tiene que devolverlo: el estado tiene que decirlo para que
+    // pendingRefunds() lo encuentre.
+    const swapId = "swap_con_lock";
+    seedSwap(swapId, "XRP");
+    swapStore.set(swapId, {
+      ...swapStore.get(swapId)!,
+      secret_hash: "aa".repeat(32),
+      txs: { lock_a: "hash_falso_de_lock" },
+    });
+
+    await executeAtomicSwapBackground(
+      swapId,
+      Keypair.random().secret(),
+      Keypair.random().secret(),
+      "CCDOUXIXSFXT2HTJAJGFNUJN6CKCYX2M6AL2BHHPEF6ISNHP2BGLS4KX",
+      xrplLeg,
+      "USDC", 1, "XLM", 5,   // buy_asset inválido → falla con el lock ya puesto
+      240, 120,
+    );
+
+    const swap = swapStore.get(swapId)!;
+    expect(swap.status).toBe("refund_pending");
+    expect(pendingRefunds().map((s) => s.swap_id)).toContain(swapId);
   });
 
   it("el invariante se comprueba en reloj de pared, no en unidades nativas", () => {

@@ -13,9 +13,10 @@
  */
 
 import * as StellarSdk from "@stellar/stellar-sdk";
+import crypto from "crypto";
 import * as bt from "@micopaybridge/xrpl-bridge/bridge-translate";
 import { swapStore, type SwapState } from "./swapStore.js";
-import { lockXrplLeg, revealOnXrpl, xrplAddressFromSeed } from "./xrpl-leg.js";
+import { lockXrplLeg, revealOnXrpl, cancelXrplLeg, xrplAddressFromSeed } from "./xrpl-leg.js";
 
 const RPC_URL = process.env.STELLAR_RPC_URL ?? "https://soroban-testnet.stellar.org";
 const NET      = StellarSdk.Networks.TESTNET;
@@ -141,17 +142,17 @@ export async function executeAtomicSwapBackground(
       throw new Error(`La pierna B es XRPL: buy_asset debe ser XRP, llegó ${buyAsset}`);
     }
 
-    // El invariante se comprueba en reloj de pared, no en unidades nativas.
+    // Los timeouts se comprueban en reloj de pared, no en unidades nativas.
     // Cruzar de ledgers de Stellar a época Ripple es donde se pierde en
     // silencio, y se paga en el peor momento: cuando alguien revela tarde.
+    //
+    // Son DOS condiciones, no una. La invariante sola no basta: con
+    // counterparty=1 ledger, 1200s > 5s la pasa, y esos 5 segundos de ventana
+    // en XRPL se cierran antes del EscrowFinish — verificado contra testnet,
+    // tecNO_PERMISSION y la pierna de Soroban bloqueada.
     const initiatorWallClockSec    = initiatorLedgers * bt.STELLAR_SECONDS_PER_LEDGER;
     const counterpartyWallClockSec = counterpartyLedgers * bt.STELLAR_SECONDS_PER_LEDGER;
-    if (!bt.checkInvariant(initiatorWallClockSec, counterpartyWallClockSec)) {
-      throw new Error(
-        `Invariante roto: la pierna del iniciador (${initiatorWallClockSec}s) no dura más ` +
-        `que la de la contraparte (${counterpartyWallClockSec}s)`
-      );
-    }
+    bt.assertTimeoutsSafe(initiatorWallClockSec, counterpartyWallClockSec);
 
     update({ status: "locking_a", secret_hash: secretHash.toString("hex") });
 
@@ -210,6 +211,75 @@ export async function executeAtomicSwapBackground(
     update({ status: "completed", txs: { ...txs(), release_a: relAHash } });
 
   } catch (err) {
-    update({ status: "failed", error: String(err) });
+    // Si ya se bloqueó algo, "failed" no basta: hay dinero parado y alguien
+    // tiene que devolverlo. Se marca refund_pending para que refundSwap() lo
+    // encuentre, y el estado ya persistido lleva owner y offer_sequence.
+    const s = swapStore.get(swapId)!;
+    const hayFondosBloqueados = !!s.txs.lock_a || !!s.txs.lock_b;
+    update({
+      status: hayFondosBloqueados ? "refund_pending" : "failed",
+      error: String(err),
+    });
   }
+}
+
+/**
+ * Devuelve los fondos de un swap que se quedó a medias.
+ *
+ * No hay prisa ni magia: las dos cadenas solo permiten reembolsar DESPUÉS del
+ * timeout, así que esto es idempotente y se puede llamar tantas veces como
+ * haga falta hasta que ambas piernas estén resueltas. Lo que no se puede es
+ * no llamarlo nunca, que es donde estábamos.
+ *
+ * Devuelve qué quedó pendiente, para que quien lo llame sepa si repetir.
+ */
+export async function refundSwap(
+  swapId: string,
+  initiatorSecret: string,
+  contractA: string,
+  xrplLeg: XrplLegConfig,
+): Promise<{ swap_id: string; refunded: string[]; pending: string[] }> {
+  const swap = swapStore.get(swapId);
+  if (!swap) throw new Error(`swap desconocido: ${swapId}`);
+
+  const refunded: string[] = [];
+  const pending: string[] = [];
+  const update = (patch: Partial<SwapState>) => {
+    const current = swapStore.get(swapId)!;
+    swapStore.set(swapId, { ...current, ...patch, updated_at: new Date().toISOString() });
+  };
+
+  // Pierna B (XRPL): EscrowCancel devuelve el XRP a quien lo bloqueó. Solo
+  // procede pasado el CancelAfter; antes el ledger lo rechaza.
+  if (swap.xrpl && swap.txs.lock_b && !swap.txs.release_b && !swap.txs.refund_b) {
+    try {
+      const res = await cancelXrplLeg({
+        senderSeed: xrplLeg.counterpartySeed,
+        owner: swap.xrpl.owner,
+        offerSequence: swap.xrpl.offer_sequence,
+      });
+      update({ txs: { ...swapStore.get(swapId)!.txs, refund_b: res.hash } });
+      refunded.push("xrpl");
+    } catch (err) {
+      pending.push(`xrpl: ${String(err)}`);
+    }
+  }
+
+  // Pierna A (Soroban): refund() exige que el timeout_ledger haya pasado.
+  if (swap.txs.lock_a && !swap.txs.release_a && !swap.txs.refund_a) {
+    try {
+      const initiatorKP = StellarSdk.Keypair.fromSecret(initiatorSecret);
+      const preimageHash = swap.secret_hash;
+      if (!preimageHash) throw new Error("el swap no tiene secret_hash guardado");
+      const htlcSwapId = crypto.createHash("sha256").update(Buffer.from(preimageHash, "hex")).digest("hex");
+      const hash = await invokeContract(initiatorKP, contractA, "refund", [bytesVal(htlcSwapId)]);
+      update({ txs: { ...swapStore.get(swapId)!.txs, refund_a: hash } });
+      refunded.push("soroban");
+    } catch (err) {
+      pending.push(`soroban: ${String(err)}`);
+    }
+  }
+
+  if (pending.length === 0) update({ status: "refunded" });
+  return { swap_id: swapId, refunded, pending };
 }

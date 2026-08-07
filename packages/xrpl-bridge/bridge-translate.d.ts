@@ -14,6 +14,11 @@ export declare const RIPPLE_EPOCH_OFFSET: number;
 export declare const STELLAR_SECONDS_PER_LEDGER: number;
 /** Espejo de htlc-core: el mínimo que exige `lock` en AtomicSwapHTLC. */
 export declare const MIN_TIMEOUT_LEDGERS: number;
+/**
+ * Piso de la pierna XRPL, derivado del mismo margen que el de Soroban. XRPL no
+ * tiene mínimo propio: acepta un CancelAfter a segundos vista.
+ */
+export declare const MIN_COUNTERPARTY_TIMEOUT_SEC: number;
 /** Source tag del reto Make Waves. Va en toda tx XRPL que emitamos. */
 export declare const SOURCE_TAG: number;
 
@@ -62,3 +67,12 @@ export declare function checkInvariant(
   initiatorWallClockSec: number,
   counterpartyWallClockSec: number
 ): boolean;
+
+/**
+ * Las DOS condiciones antes de bloquear: piso de la contraparte e invariante.
+ * Lanza con el motivo — no devuelve booleano, para que no se pueda ignorar.
+ */
+export declare function assertTimeoutsSafe(
+  initiatorWallClockSec: number,
+  counterpartyWallClockSec: number
+): void;

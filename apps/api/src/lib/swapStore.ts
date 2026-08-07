@@ -1,7 +1,9 @@
 /**
- * In-memory store for swap plans and live swap states.
- * Shared between agent.ts (create/execute) and swaps.ts (status polling).
+ * Store de planes y estados de swap.
+ * Compartido entre agent.ts (crear/ejecutar) y swaps.ts (polling de estado).
  */
+
+import fs from "fs";
 
 export interface SwapPlan {
   id: string;
@@ -27,7 +29,10 @@ export type SwapStatus =
   | "released_b"
   | "releasing_a"
   | "completed"
-  | "failed";
+  | "failed"
+  /** Falló con fondos ya bloqueados: hay que reembolsar las dos piernas. */
+  | "refund_pending"
+  | "refunded";
 
 /**
  * Datos de la pierna XRPL. `owner` + `offer_sequence` es lo que identifica un
@@ -81,5 +86,69 @@ export const TX_CHAIN: Record<keyof SwapState["txs"], "stellar" | "xrpl"> = {
   refund_b: "xrpl",
 };
 
-export const planStore  = new Map<string, SwapPlan>();
-export const swapStore  = new Map<string, SwapState>();
+export const planStore = new Map<string, SwapPlan>();
+
+/**
+ * Estado de los swaps, persistido en disco.
+ *
+ * Era un `Map` en RAM, y eso convertía en mentira el comentario que dice que
+ * los datos del escrow XRPL se guardan "antes de revelar, por si el proceso
+ * muere": si el proceso moría, el Map moría con él y con él la única forma de
+ * cancelar el escrow. Los fondos quedaban esperando al CancelAfter sin que
+ * nadie supiera que existían.
+ *
+ * Escritura atómica (tmp + rename) y carga al arrancar. No es una base de
+ * datos y no pretende serlo: es el mínimo para que un reinicio no pierda de
+ * vista dinero bloqueado. `SWAP_STORE_PATH` lo desactiva si se pone vacío
+ * (los tests corren así).
+ */
+const STORE_PATH = process.env.SWAP_STORE_PATH ?? "./swap-store.json";
+
+class PersistentSwapStore extends Map<string, SwapState> {
+  constructor() {
+    super();
+    if (!STORE_PATH) return;
+    try {
+      if (fs.existsSync(STORE_PATH)) {
+        const raw = JSON.parse(fs.readFileSync(STORE_PATH, "utf8")) as Record<string, SwapState>;
+        for (const [k, v] of Object.entries(raw)) super.set(k, v);
+      }
+    } catch (err) {
+      console.warn(`[swapStore] estado ilegible, se arranca limpio: ${String(err)}`);
+    }
+  }
+
+  override set(key: string, value: SwapState): this {
+    super.set(key, value);
+    this.flush();
+    return this;
+  }
+
+  override delete(key: string): boolean {
+    const had = super.delete(key);
+    if (had) this.flush();
+    return had;
+  }
+
+  private flush(): void {
+    if (!STORE_PATH) return;
+    try {
+      const tmp = `${STORE_PATH}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(Object.fromEntries(this), null, 2));
+      fs.renameSync(tmp, STORE_PATH);
+    } catch (err) {
+      // Que no se pueda escribir el estado NO debe tumbar un swap en curso,
+      // pero tiene que verse: sin esto volvemos al caso de fondos perdidos.
+      console.error(`[swapStore] NO SE PUDO PERSISTIR — un reinicio perderá este swap: ${String(err)}`);
+    }
+  }
+}
+
+export const swapStore: Map<string, SwapState> = new PersistentSwapStore();
+
+/** Swaps que se quedaron a medias: tienen fondos bloqueados sin resolver. */
+export function pendingRefunds(): SwapState[] {
+  return [...swapStore.values()].filter(
+    (s) => (s.status === "failed" || s.status === "refund_pending") && !!s.txs.lock_a && !s.txs.release_a && !s.txs.refund_a
+  );
+}

@@ -1,7 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { requirePayment } from "../middleware/x402.js";
 import type { CounterpartyInfo } from "@micopay/types";
-import { swapStore, TX_CHAIN, type SwapState } from "../lib/swapStore.js";
+import { swapStore, pendingRefunds, TX_CHAIN, type SwapState } from "../lib/swapStore.js";
+import { refundSwap } from "../lib/soroban.js";
+
+const CONTRACT_A = process.env.ATOMIC_SWAP_CONTRACT_A ?? "CCDOUXIXSFXT2HTJAJGFNUJN6CKCYX2M6AL2BHHPEF6ISNHP2BGLS4KX";
 
 // Un explorador por cadena. Antes todas las txs se enlazaban a stellar.expert;
 // desde M4.5 la pierna B vive en XRPL y ese enlace daría 404 — peor, haría
@@ -204,4 +207,62 @@ export async function swapRoutes(fastify: FastifyInstance): Promise<void> {
       });
     }
   );
+
+  /**
+   * GET /api/v1/swaps/pending-refunds
+   * Gratis a propósito: cobrar por saber que tienes dinero atrapado sería
+   * exactamente el incentivo equivocado.
+   */
+  fastify.get("/api/v1/swaps/pending-refunds", async (_request, reply) => {
+    const pendientes = pendingRefunds();
+    return reply.send({
+      count: pendientes.length,
+      swaps: pendientes.map((s) => ({
+        swap_id: s.swap_id,
+        status: s.status,
+        error: s.error,
+        locked: { soroban: s.txs.lock_a, xrpl: s.txs.lock_b },
+        xrpl: s.xrpl,
+        updated_at: s.updated_at,
+      })),
+      hint: "POST /api/v1/swaps/:id/refund. Las dos cadenas solo reembolsan pasado el timeout.",
+    });
+  });
+
+  /**
+   * POST /api/v1/swaps/:id/refund
+   *
+   * Sin x402: si un swap dejó fondos bloqueados, cobrar por devolverlos es
+   * indefendible. Idempotente — se puede reintentar hasta que las dos piernas
+   * queden resueltas, porque ninguna cadena permite reembolsar antes de su
+   * timeout.
+   */
+  fastify.post("/api/v1/swaps/:id/refund", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!swapStore.get(id)) {
+      return reply.status(404).send({ error: "Swap not found", swap_id: id });
+    }
+
+    const initiatorSecret = process.env.PLATFORM_SECRET_KEY;
+    const xrplCounterpartySeed = process.env.XRPL_COUNTERPARTY_SEED;
+    const xrplInitiatorSeed = process.env.XRPL_INITIATOR_SEED;
+    if (!initiatorSecret || !xrplCounterpartySeed || !xrplInitiatorSeed) {
+      return reply.status(503).send({ error: "Demo keypairs not configured" });
+    }
+
+    try {
+      const result = await refundSwap(id, initiatorSecret, CONTRACT_A, {
+        initiatorSeed: xrplInitiatorSeed,
+        counterpartySeed: xrplCounterpartySeed,
+      });
+      return reply.send({
+        ...result,
+        // pending no es un error: lo normal es que el timeout aún no haya
+        // pasado. Se reintenta más tarde.
+        retry_after_timeout: result.pending.length > 0,
+      });
+    } catch (err) {
+      return reply.status(500).send({ error: "Refund failed", detail: String(err) });
+    }
+  });
 }

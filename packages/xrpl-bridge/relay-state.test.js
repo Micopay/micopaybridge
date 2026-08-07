@@ -9,7 +9,7 @@ const os = require("os");
 const path = require("path");
 const { nativeToScVal } = require("@stellar/stellar-sdk");
 const bt = require("./bridge-translate");
-const { Relay, RelayState, SorobanWatcher } = require("./relay");
+const { Relay, RelayState, SorobanWatcher, findRevealedPreimage, secretHashFromCondition } = require("./relay");
 
 let passed = 0;
 async function test(name, fn) {
@@ -182,6 +182,38 @@ async function main() {
     relay.handleXrplReveal(p, { hash: "ABC", ledger_index: 42 });
 
     assert.deepStrictEqual(notificaciones, [p.toString("hex")]);
+  });
+
+  await test("re-escaneo con varios swaps: devuelve el del hash pedido, no el primero", async () => {
+    // Una cuenta que ya cerró otros swaps tiene varios EscrowFinish en su
+    // historial. Sin filtrar se devolvía el primero, que puede ser de OTRO
+    // swap: el agente cobra con el secreto equivocado y la recuperación falla
+    // en silencio — justo lo que esta función existe para impedir.
+    const pViejo = bt.generatePreimage();
+    const pMio = bt.generatePreimage();
+    const finish = (p) => ({
+      validated: true,
+      tx_json: { TransactionType: "EscrowFinish", Owner: "rOWNER", Fulfillment: bt.xrplFulfillment(p) },
+      meta: { TransactionResult: "tesSUCCESS" },
+    });
+    // account_tx devuelve lo más reciente primero: el swap ajeno encabeza
+    const client = { request: async () => ({ result: { transactions: [finish(pViejo), finish(pMio)] } }) };
+
+    const hallado = await findRevealedPreimage(client, "rOWNER", bt.sorobanSecretHash(pMio));
+    assert.ok(hallado, "no encontró la preimagen pedida");
+    assert.strictEqual(hallado.toString("hex"), pMio.toString("hex"), "devolvió la preimagen de otro swap");
+
+    // Y si el swap pedido no está en el historial, null — no la de otro
+    const ausente = await findRevealedPreimage(client, "rOWNER", bt.sorobanSecretHash(bt.generatePreimage()));
+    assert.strictEqual(ausente, null, "devolvió una preimagen ajena en vez de null");
+  });
+
+  await test("secretHashFromCondition: el fingerprint de la condition es el hash de Soroban", () => {
+    const p = bt.generatePreimage();
+    const hash = secretHashFromCondition(bt.xrplCondition(p));
+    assert.deepStrictEqual(hash, bt.sorobanSecretHash(p));
+    assert.strictEqual(secretHashFromCondition("A0228020" + "00".repeat(32)), null, "aceptó un fulfillment como condition");
+    assert.strictEqual(secretHashFromCondition(undefined), null);
   });
 
   console.log(`\n${passed} tests OK`);

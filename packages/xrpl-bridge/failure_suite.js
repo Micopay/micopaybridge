@@ -217,7 +217,7 @@ async function main() {
   );
   assert.strictEqual(finish6.result.meta.TransactionResult, "tesSUCCESS");
   // "B reinicia": nadie escuchaba. Re-escaneo del historial:
-  const recovered = await findRevealedPreimage(client, w1.address);
+  const recovered = await findRevealedPreimage(client, w1.address, bt.sorobanSecretHash(p6));
   assert.ok(recovered, "re-escaneo no encontró la preimagen en el historial");
   assert.strictEqual(bt.sorobanSecretHash(recovered).toString("hex"), bt.sorobanSecretHash(p6).toString("hex"));
   // B cobra en Soroban con el secreto recuperado
@@ -296,7 +296,7 @@ async function main() {
 
   // Lo que de verdad se prueba: tras esa revelación tardía, B TODAVÍA cobra
   // la pierna larga en Soroban.
-  const recovered7 = await findRevealedPreimage(client, w1.address);
+  const recovered7 = await findRevealedPreimage(client, w1.address, bt.sorobanSecretHash(p7));
   assert.ok(recovered7, "el secreto revelado al filo no aparece en el historial");
   const { sequence: seqAlCobrar } = await soroban.getLatestLedger();
   assert.ok(

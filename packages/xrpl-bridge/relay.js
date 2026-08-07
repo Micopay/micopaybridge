@@ -36,6 +36,19 @@ function log(event, fields = {}) {
 const shortId = (buf) => (buf ? Buffer.from(buf).toString("hex").slice(0, 12) : undefined);
 
 /**
+ * Extrae el hash de una condition DER (A0 25 80 20 <32 bytes> 81 01 20).
+ * El fingerprint de la condition ES el secret_hash que valida Soroban.
+ * Devuelve Buffer de 32 bytes, o null si no es una condition preimage-sha-256.
+ */
+function secretHashFromCondition(conditionHex) {
+  if (typeof conditionHex !== "string") return null;
+  const buf = Buffer.from(conditionHex, "hex");
+  if (buf.length !== 39) return null;
+  if (buf[0] !== 0xa0 || buf[1] !== 0x25 || buf[2] !== 0x80 || buf[3] !== 0x20) return null;
+  return buf.subarray(4, 36);
+}
+
+/**
  * Cursor persistido de la pierna Soroban.
  *
  * Sin esto, reiniciar el relay a mitad de un swap arranca desde el ledger
@@ -85,9 +98,23 @@ function extractPreimage(fulfillmentHex) {
  * escrow un EscrowFinish exitoso con fulfillment y extrae la preimagen.
  * El secreto queda público on-chain para siempre — si el watcher estaba
  * muerto durante la revelación, esto lo recupera al reiniciar.
+ *
+ * `expectedSecretHash` (Buffer de 32 bytes) NO es opcional en la práctica:
+ * una cuenta que haya cerrado más de un swap tiene varios EscrowFinish en su
+ * historial, y sin filtrar se devuelve el primero que aparezca — que puede ser
+ * la preimagen de OTRO swap. Con ella, el agente intenta cobrar con el secreto
+ * equivocado y la recuperación falla en silencio, que es justo lo que esta
+ * función existe para impedir.
+ *
+ * Se deja opcional solo por compatibilidad con los scripts de un solo swap.
+ * Sin ella se registra una advertencia.
+ *
  * Devuelve Buffer o null.
  */
-async function findRevealedPreimage(client, escrowOwner) {
+async function findRevealedPreimage(client, escrowOwner, expectedSecretHash = null) {
+  if (!expectedSecretHash) {
+    log("find_preimage_sin_filtro", { owner: escrowOwner, aviso: "devuelve_el_primero_del_historial" });
+  }
   const res = await client.request({
     command: "account_tx",
     account: escrowOwner,
@@ -101,7 +128,9 @@ async function findRevealedPreimage(client, escrowOwner) {
     if (tx.TransactionType !== "EscrowFinish" || tx.Owner !== escrowOwner || !tx.Fulfillment) continue;
     if (entry.meta?.TransactionResult !== "tesSUCCESS") continue;
     const preimage = extractPreimage(tx.Fulfillment);
-    if (preimage) return preimage;
+    if (!preimage) continue;
+    if (expectedSecretHash && !bt.sorobanSecretHash(preimage).equals(expectedSecretHash)) continue;
+    return preimage;
   }
   return null;
 }
@@ -267,8 +296,13 @@ class Relay {
       log("observando_xrpl", { cuenta: config.xrpl.escrowOwner });
 
       // Recuperación tras caída: lo que se reveló mientras el relay estaba
-      // muerto no llega por suscripción, solo está en el historial.
-      const recovered = await findRevealedPreimage(this.xrplWatcher.client, config.xrpl.escrowOwner);
+      // muerto no llega por suscripción, solo está en el historial. Se filtra
+      // por el hash de ESTE swap — la cuenta puede haber cerrado otros.
+      const recovered = await findRevealedPreimage(
+        this.xrplWatcher.client,
+        config.xrpl.escrowOwner,
+        secretHashFromCondition(config.xrpl.condition)
+      );
       if (recovered) {
         log("xrpl_recuperado_de_historial", { swap: shortId(bt.sorobanSwapId(recovered)) });
         this.handleXrplReveal(recovered, {});
@@ -373,4 +407,12 @@ class Relay {
   }
 }
 
-module.exports = { Relay, RelayState, XrplWatcher, SorobanWatcher, extractPreimage, findRevealedPreimage };
+module.exports = {
+  Relay,
+  RelayState,
+  XrplWatcher,
+  SorobanWatcher,
+  extractPreimage,
+  findRevealedPreimage,
+  secretHashFromCondition,
+};

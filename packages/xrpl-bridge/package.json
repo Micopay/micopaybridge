@@ -12,7 +12,7 @@
     "./relay": "./relay.js"
   },
   "scripts": {
-    "test": "node bridge-translate.test.js && node relay-state.test.js",
+    "test": "node bridge-translate.test.js && node relay-state.test.js && node dts-drift.test.js",
     "test:live": "node failure_suite.js"
   },
   "license": "MIT",

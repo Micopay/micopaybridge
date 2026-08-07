@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import Anthropic from "@anthropic-ai/sdk";
 import { requirePayment } from "../middleware/x402.js";
+import * as bt from "@micopaybridge/xrpl-bridge/bridge-translate";
 import { planStore, swapStore } from "../lib/swapStore.js";
 import { executeAtomicSwapBackground } from "../lib/soroban.js";
 
@@ -171,6 +172,28 @@ function validatePlan(plan: any): void {
   // Validate counterparty address (in demo mode, should match expected counterparty)
   if (DEMO_AGENT_ADDRESS && plan.counterparty_address !== DEMO_AGENT_ADDRESS) {
     throw new Error(`Invalid counterparty_address`);
+  }
+
+  // Los timeouts los propone el LLM. Hasta ahora la regla 2x vivía SOLO en el
+  // prompt del sistema y nada la comprobaba: un plan con counterparty_ledgers=1
+  // pasaba esta validación, se cobraba el x402 y dejaba la pierna de Soroban
+  // bloqueada sin nadie que la cobrara. Se comprueba aquí, en la frontera HTTP,
+  // antes de firmar nada — y otra vez en el ejecutor, por si alguien lo llama
+  // sin pasar por aquí.
+  const initiatorLedgers = Number(plan.initiator_ledgers);
+  const counterpartyLedgers = Number(plan.counterparty_ledgers);
+  if (!Number.isFinite(initiatorLedgers) || !Number.isFinite(counterpartyLedgers)) {
+    throw new Error("initiator_ledgers y counterparty_ledgers deben ser números");
+  }
+  bt.assertTimeoutsSafe(
+    initiatorLedgers * bt.STELLAR_SECONDS_PER_LEDGER,
+    counterpartyLedgers * bt.STELLAR_SECONDS_PER_LEDGER,
+  );
+  if (initiatorLedgers < bt.MIN_TIMEOUT_LEDGERS) {
+    throw new Error(
+      `initiator_ledgers ${initiatorLedgers} por debajo del mínimo del contrato ` +
+      `(MIN_TIMEOUT_LEDGERS=${bt.MIN_TIMEOUT_LEDGERS})`
+    );
   }
 }
 

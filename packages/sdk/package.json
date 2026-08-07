@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@micopay/types": "*",
-    "@stellar/stellar-sdk": "^13.1.0"
+    "@stellar/stellar-sdk": "^16.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

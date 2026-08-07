@@ -4,6 +4,8 @@ node_modules/
 *.log
 relay-state.json
 relay-state.json.tmp
+swap-store.json
+swap-store.json.tmp
 .turbo/
 target/
 dist/

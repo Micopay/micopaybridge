@@ -21,6 +21,12 @@ const RIPPLE_EPOCH_OFFSET = 946684800; // 2000-01-01T00:00:00Z en unix
 const STELLAR_SECONDS_PER_LEDGER = 5; // promedio red Stellar
 // Espejo de htlc-core (contracts/htlc-core/src/lib.rs): MIN_TIMEOUT_LEDGERS = 60
 const MIN_TIMEOUT_LEDGERS = 60;
+// El piso de la pierna XRPL, derivado del MISMO margen que el de Soroban.
+// XRPL no tiene mínimo propio: acepta un CancelAfter a segundos vista, y ahí
+// la ventana se cierra antes de que dé tiempo a revelar. El resultado es la
+// pierna larga bloqueada sin nadie que la cobre. Comprobar solo la invariante
+// iniciador > contraparte NO basta: 1200 s > 5 s la pasa.
+const MIN_COUNTERPARTY_TIMEOUT_SEC = MIN_TIMEOUT_LEDGERS * STELLAR_SECONDS_PER_LEDGER;
 // Source tag del reto Make Waves (XRPL Commons). Va en toda tx XRPL que emitamos:
 // el leaderboard cuenta direcciones que firmaron >=1 tx con este tag, y el conteo
 // arranca en el Mainnet Gate — lo que se manda sin tag no se puede reetiquetar.
@@ -135,10 +141,32 @@ function checkInvariant(initiatorWallClockSec, counterpartyWallClockSec) {
   return initiatorWallClockSec > counterpartyWallClockSec;
 }
 
+/**
+ * Las DOS condiciones que deben cumplirse antes de bloquear nada, no solo la
+ * invariante. Lanza con el motivo; no devuelve booleano a propósito, para que
+ * quien la llame no pueda ignorar el resultado por descuido.
+ */
+function assertTimeoutsSafe(initiatorWallClockSec, counterpartyWallClockSec) {
+  if (counterpartyWallClockSec < MIN_COUNTERPARTY_TIMEOUT_SEC) {
+    throw new Error(
+      `Timeout de la contraparte demasiado corto: ${counterpartyWallClockSec}s ` +
+      `(mínimo ${MIN_COUNTERPARTY_TIMEOUT_SEC}s). Una ventana así se cierra antes ` +
+      `de que dé tiempo a revelar y deja la pierna larga bloqueada.`
+    );
+  }
+  if (!checkInvariant(initiatorWallClockSec, counterpartyWallClockSec)) {
+    throw new Error(
+      `Invariante roto: la pierna del iniciador (${initiatorWallClockSec}s) no dura ` +
+      `más que la de la contraparte (${counterpartyWallClockSec}s)`
+    );
+  }
+}
+
 module.exports = {
   RIPPLE_EPOCH_OFFSET,
   STELLAR_SECONDS_PER_LEDGER,
   MIN_TIMEOUT_LEDGERS,
+  MIN_COUNTERPARTY_TIMEOUT_SEC,
   SOURCE_TAG,
   generatePreimage,
   sorobanSecretHash,
@@ -150,4 +178,5 @@ module.exports = {
   fromRippleTime,
   planTimeouts,
   checkInvariant,
+  assertTimeoutsSafe,
 };

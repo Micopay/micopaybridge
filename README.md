@@ -95,6 +95,31 @@ Una sola preimagen gobierna las dos piernas: el fingerprint de la `Condition` de
 el `secret_hash` que valida Soroban. Si se generaran por separado no habría swap atómico,
 sino dos escrows sin relación.
 
+**Antes de firmar nada se comprueban DOS cosas, no una.** La invariante
+`iniciador > contraparte` sola no basta: con `counterparty_ledgers=1` pasa (1200 s > 5 s) y
+la ventana de XRPL se cierra antes del `EscrowFinish`. Verificado contra testnet:
+`tecNO_PERMISSION` y la pierna de Soroban bloqueada. Por eso hay también un **piso**
+(`MIN_COUNTERPARTY_TIMEOUT_SEC`, 300 s) derivado del mismo mínimo que exige el contrato.
+
+### Cuando algo sale mal
+
+Un swap que falla con fondos ya bloqueados queda en `refund_pending`, no en `failed` —
+`failed` suena a "no pasó nada" y ahí hay dinero parado.
+
+```bash
+GET  /api/v1/swaps/pending-refunds     # qué quedó colgado
+POST /api/v1/swaps/:id/refund          # devolver las dos piernas
+```
+
+Los dos **sin x402**: cobrar por devolver fondos que se quedaron atrapados sería el
+incentivo equivocado. El refund es idempotente y se reintenta: ninguna de las dos cadenas
+permite reembolsar antes de su timeout, así que `pending` es lo normal al principio.
+
+El estado vive en `swap-store.json`, con escritura atómica y carga al arrancar. No es una
+base de datos: es el mínimo para que un reinicio no pierda de vista dinero bloqueado.
+Antes era un `Map` en RAM, y el `owner`/`offer_sequence` del escrow —lo único con lo que se
+puede cancelar— moría con el proceso.
+
 Corrido contra ambas testnets, 24 s de punta a punta:
 
 | Paso | Cadena | Tx |
