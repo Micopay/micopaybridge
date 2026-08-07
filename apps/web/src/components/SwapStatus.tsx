@@ -1,25 +1,45 @@
 import { useState, useEffect, useRef } from "react";
 
 const EXPLORER = "https://stellar.expert/explorer/testnet";
+const XRPL_EXPLORER = "https://testnet.xrpl.org";
 
-// Real completed atomic swap from testnet
+// Cada tx a su explorador. La pierna B vive en XRPL desde M4.5; enlazarla a
+// stellar.expert la haría parecer inexistente.
+const TX_CHAIN = {
+  lock_a: "stellar",
+  release_a: "stellar",
+  refund_a: "stellar",
+  lock_b: "xrpl",
+  release_b: "xrpl",
+  refund_b: "xrpl",
+} as const;
+
+/**
+ * Swap real y completo entre las dos testnets. No es un mockup: son las
+ * cuatro transacciones de una corrida de `npm run test:live -w @micopay/api`
+ * el 2026-08-07, y se pueden abrir en sus exploradores.
+ *
+ * Antes esta constante enseñaba dos contratos de Soroban (contract_a y
+ * contract_b). Eso era la cadena B simulada: las dos piernas en la misma
+ * cadena. Ya no.
+ */
 const REAL_SWAP = {
-  id: "3960c267aa93024af477ca8d57ee92c0adea2ed43d46e1602709dc4824da1516",
   status: "completed",
-  sell: "0.50 USDC",
-  buy: "3.00 XLM",
-  initiator: "GDKKW2WS...BJJK",
-  counterparty: "GCRFPFSN...F3AA",
-  contract_a: "CCDOUXIXSFXT2HTJAJGFNUJN6CKCYX2M6AL2BHHPEF6ISNHP2BGLS4KX",
-  contract_b: "CBLCGG44QQILWEIVBXDSZSLH7NI7SGJQKXQ7WTKP3W3YSXOBTGMZKSNN",
+  sell: "0.10 XLM",
+  buy: "2.00 XRP",
+  duration: "24 s de punta a punta",
+  contract_a: "CANNVHGZHVSVQO76SIVV5YNHH6ODDBV5IEROUITFTFIH6NRLF7XHRCIT",
+  xrpl_escrow_owner: "rGrZ3hMyAP38Sbn6XE4vMW6a73dVQXF9pW",
+  xrpl_destination: "rGUSJDCuL6UE3RBiVVfCQEGiwaEtmw8ni1",
   txs: {
-    lock_a:    "5d2b1bd61adebe8946e1986d58560ca3d4379219afe3375b142e8c02b0b00bf6",
-    lock_b:    "4123aadfe4b53f6fe9bbc60150cee7b0e06f2500ee276f114f2f833a0325b502",
-    release_b: "4db1ba5520485b13aad5fe86537411a6a905424c3dd2066f6be9c78a7f34f0eb",
-    release_a: "34057acde13d0117737ddbb141e9a6c6641418fc7cbfb6a35db6f00201f8ee64",
+    lock_a:    "6b5f0865c9daedf8a5c370dabecc2e32bf1f46568f6304b7f09aaf1dfb21f3ab",
+    lock_b:    "41BBE9B40A23B5D699482B5DF12995E791636DD3A4D5B16357548D33D836B229",
+    release_b: "591610E4143F041B3A2C9CCD343FF7291FC4BCB8B3446C740F5AFE187ECBFB3E",
+    release_a: "d668659c9a0099c40b37380c48eb7aa7a73d4ce0d012cc92b3c471af9eccf1bb",
   },
-  secret_hash: "35a57759fcf2fd9b9c27c5e9c0287453da4b677a34d98b730ab71340a2bb5823",
-  started: "live on testnet",
+  secret_hash: "8593e67ecbcd7db9f3f17a21b159f89e5ca0c6c4e2e803a2ff1ff3383c4a6868",
+  condition:   "A02580208593E67ECBCD7DB9F3F17A21B159F89E5CA0C6C4E2E803A2FF1FF3383C4A6868810120",
+  started: "testnets XRPL + Soroban · 2026-08-07",
 };
 
 interface Props { apiUrl: string }
@@ -36,11 +56,11 @@ const SWAP_STEPS: { status: string; label: string; pct: number }[] = [
   { status: "queued",      label: "Queued",              pct: 5  },
   { status: "locking_a",   label: "Locking USDC (A)...", pct: 20 },
   { status: "locked_a",    label: "USDC Locked ✓",       pct: 35 },
-  { status: "locking_b",   label: "Locking XLM (B)...",  pct: 50 },
-  { status: "locked_b",    label: "XLM Locked ✓",        pct: 65 },
-  { status: "releasing_b", label: "Revealing secret...",  pct: 75 },
-  { status: "released_b",  label: "Secret Revealed ✓",   pct: 85 },
-  { status: "releasing_a", label: "Claiming USDC...",     pct: 95 },
+  { status: "locking_b",   label: "Locking XRP (XRPL)...", pct: 50 },
+  { status: "locked_b",    label: "XRP escrow created ✓", pct: 65 },
+  { status: "releasing_b", label: "Revealing preimage on XRPL...", pct: 75 },
+  { status: "released_b",  label: "Preimage public on XRPL ✓", pct: 85 },
+  { status: "releasing_a", label: "Claiming on Soroban...", pct: 95 },
   { status: "completed",   label: "Swap Complete ✓",      pct: 100},
   { status: "failed",      label: "Failed ✗",             pct: 0  },
 ];
@@ -95,7 +115,8 @@ export default function SwapStatus({ apiUrl }: Props) {
       const planRes = await fetch(`${apiUrl}/api/v1/swaps/plan`, {
         method: "POST",
         headers: { "x-payment": "mock:GAGENT_DEMO:0.01", "Content-Type": "application/json" },
-        body: JSON.stringify({ intent: "swap 0.5 USDC for XLM, best rate", user_address: "GDEMO" }),
+        // La pierna B es XRPL: el ejecutor rechaza cualquier buy_asset que no sea XRP.
+        body: JSON.stringify({ intent: "swap 0.1 XLM for XRP, best rate", user_address: "GDEMO" }),
       });
       const planData = await planRes.json();
       const planId = planData.plan?.id;
@@ -115,7 +136,7 @@ export default function SwapStatus({ apiUrl }: Props) {
       setExecSwapId(newSwapId);
       setExecStatus("queued");
       addLog(`✓ Swap queued: ${newSwapId}`);
-      addLog("⏳ Polling status every 5s — 4 Soroban txs in progress...");
+      addLog("⏳ Polling cada 5 s — 2 txs en Soroban + 2 en XRPL...");
 
       // Step 3: Poll until done
       pollRef.current = setInterval(async () => {
@@ -159,10 +180,22 @@ export default function SwapStatus({ apiUrl }: Props) {
     borderRadius: "0.5rem", padding: "1.5rem", marginBottom: "1rem",
   };
 
-  const txRow = (label: string, hash: string, color = "#a78bfa") => (
+  const txUrl = (key: keyof typeof TX_CHAIN, hash: string) =>
+    TX_CHAIN[key] === "xrpl"
+      ? `${XRPL_EXPLORER}/transactions/${hash}`
+      : `${EXPLORER}/tx/${hash}`;
+
+  const txRow = (label: string, key: keyof typeof TX_CHAIN, hash: string, color = "#a78bfa") => (
     <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
-      <span style={{ fontSize: "0.7rem", color: "#4b5563", width: "80px", flexShrink: 0 }}>{label}</span>
-      <a href={`${EXPLORER}/tx/${hash}`} target="_blank" rel="noopener noreferrer"
+      <span style={{ fontSize: "0.7rem", color: "#4b5563", width: "150px", flexShrink: 0 }}>{label}</span>
+      <span style={{
+        fontSize: "0.6rem", padding: "0.05rem 0.3rem", borderRadius: "0.2rem", flexShrink: 0,
+        background: TX_CHAIN[key] === "xrpl" ? "#1e1b4b" : "#0c2d3d",
+        color: TX_CHAIN[key] === "xrpl" ? "#a5b4fc" : "#67e8f9",
+      }}>
+        {TX_CHAIN[key] === "xrpl" ? "XRPL" : "Soroban"}
+      </span>
+      <a href={txUrl(key, hash)} target="_blank" rel="noopener noreferrer"
         style={{ fontSize: "0.7rem", color, fontFamily: "monospace", textDecoration: "none" }}>
         {hash.slice(0, 12)}...{hash.slice(-6)} ↗
       </a>
@@ -173,15 +206,20 @@ export default function SwapStatus({ apiUrl }: Props) {
     <div>
       {/* ── Lifecycle diagram ───────────────────────────────────────────── */}
       <div style={box}>
-        <h2 style={{ margin: "0 0 1rem", fontSize: "1.25rem", color: "white" }}>Atomic Swap Lifecycle</h2>
+        <h2 style={{ margin: "0 0 0.35rem", fontSize: "1.25rem", color: "white" }}>Atomic Swap XRPL ↔ Soroban</h2>
+        <p style={{ margin: "0 0 1rem", fontSize: "0.75rem", color: "#6b7280" }}>
+          Dos cadenas de verdad. La pierna de XRPL es un escrow nativo del ledger
+          (<code style={{ color: "#a5b4fc" }}>EscrowCreate</code> con <code style={{ color: "#a5b4fc" }}>Condition</code> PREIMAGE-SHA-256
+          y <code style={{ color: "#a5b4fc" }}>CancelAfter</code>) — no hay contrato que desplegar.
+        </p>
         <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
           {[
             { label: "Intent",       color: "#4ade80", bg: "#14532d", border: "#166534" },
             { label: "Plan (Claude)", color: "#4ade80", bg: "#14532d", border: "#166534" },
-            { label: "Lock A",        color: "#60a5fa", bg: "#1e3a5f", border: "#1d4ed8" },
-            { label: "Lock B",        color: "#60a5fa", bg: "#1e3a5f", border: "#1d4ed8" },
-            { label: "Release B",     color: "#c4b5fd", bg: "#3b0764", border: "#6d28d9" },
-            { label: "Release A",     color: "#c4b5fd", bg: "#3b0764", border: "#6d28d9" },
+            { label: "Lock A · Soroban",  color: "#67e8f9", bg: "#0c2d3d", border: "#0e7490" },
+            { label: "Lock B · XRPL",     color: "#a5b4fc", bg: "#1e1b4b", border: "#4338ca" },
+            { label: "Reveal · XRPL",     color: "#a5b4fc", bg: "#1e1b4b", border: "#4338ca" },
+            { label: "Claim · Soroban",   color: "#67e8f9", bg: "#0c2d3d", border: "#0e7490" },
             { label: "Complete",      color: "#4ade80", bg: "#052e16", border: "#15803d" },
           ].map(({ label, color, bg, border }, i, arr) => (
             <div key={label} style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
@@ -195,7 +233,7 @@ export default function SwapStatus({ apiUrl }: Props) {
 
         {/* Completed reference swap */}
         <h3 style={{ margin: "0 0 0.75rem", fontSize: "0.875rem", color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-          Reference Swap — Completed on Testnet
+          Swap de referencia — corrido en testnet, {REAL_SWAP.duration}
         </h3>
         <div style={{ padding: "1rem", background: "#0f172a", borderRadius: "0.375rem", borderLeft: `3px solid ${STATUS_COLORS.completed}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.75rem" }}>
@@ -205,36 +243,41 @@ export default function SwapStatus({ apiUrl }: Props) {
             </div>
             <span style={{ fontSize: "0.7rem", color: "#4b5563" }}>{REAL_SWAP.started}</span>
           </div>
-          <div style={{ marginBottom: "0.75rem", fontSize: "0.7rem", color: "#4b5563" }}>
-            swap_id: <code style={{ color: "#60a5fa", fontSize: "0.68rem" }}>{REAL_SWAP.id.slice(0, 16)}...{REAL_SWAP.id.slice(-8)}</code>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "0.75rem" }}>
-            <div style={{ fontSize: "0.7rem" }}><span style={{ color: "#4b5563" }}>initiator: </span><code style={{ color: "#60a5fa" }}>{REAL_SWAP.initiator}</code></div>
-            <div style={{ fontSize: "0.7rem" }}><span style={{ color: "#4b5563" }}>counterparty: </span><code style={{ color: "#60a5fa" }}>{REAL_SWAP.counterparty}</code></div>
-          </div>
           <div style={{ marginBottom: "0.75rem" }}>
             <div style={{ fontSize: "0.7rem", marginBottom: "0.2rem" }}>
-              <span style={{ color: "#4b5563" }}>Contract A (USDC): </span>
+              <span style={{ color: "#4b5563" }}>Pierna A — AtomicSwapHTLC (Soroban): </span>
               <a href={`${EXPLORER}/contract/${REAL_SWAP.contract_a}`} target="_blank" rel="noopener noreferrer" style={{ color: "#a78bfa", fontFamily: "monospace", fontSize: "0.68rem", textDecoration: "none" }}>
                 {REAL_SWAP.contract_a.slice(0, 10)}...{REAL_SWAP.contract_a.slice(-6)} ↗
               </a>
             </div>
             <div style={{ fontSize: "0.7rem" }}>
-              <span style={{ color: "#4b5563" }}>Contract B (XLM):  </span>
-              <a href={`${EXPLORER}/contract/${REAL_SWAP.contract_b}`} target="_blank" rel="noopener noreferrer" style={{ color: "#a78bfa", fontFamily: "monospace", fontSize: "0.68rem", textDecoration: "none" }}>
-                {REAL_SWAP.contract_b.slice(0, 10)}...{REAL_SWAP.contract_b.slice(-6)} ↗
+              <span style={{ color: "#4b5563" }}>Pierna B — escrow nativo XRPL, sin contrato: </span>
+              <a href={`${XRPL_EXPLORER}/accounts/${REAL_SWAP.xrpl_escrow_owner}`} target="_blank" rel="noopener noreferrer" style={{ color: "#a5b4fc", fontFamily: "monospace", fontSize: "0.68rem", textDecoration: "none" }}>
+                {REAL_SWAP.xrpl_escrow_owner.slice(0, 10)}...{REAL_SWAP.xrpl_escrow_owner.slice(-6)} ↗
               </a>
             </div>
           </div>
           <div style={{ borderTop: "1px solid #1f2937", paddingTop: "0.75rem" }}>
             <div style={{ fontSize: "0.7rem", color: "#4b5563", marginBottom: "0.4rem" }}>On-chain transactions:</div>
-            {txRow("1. Lock USDC",  REAL_SWAP.txs.lock_a,    "#60a5fa")}
-            {txRow("2. Lock XLM",   REAL_SWAP.txs.lock_b,    "#60a5fa")}
-            {txRow("3. Release B",  REAL_SWAP.txs.release_b, "#4ade80")}
-            {txRow("4. Release A",  REAL_SWAP.txs.release_a, "#4ade80")}
+            {txRow("1. Lock XLM",         "lock_a",    REAL_SWAP.txs.lock_a,    "#60a5fa")}
+            {txRow("2. EscrowCreate XRP", "lock_b",    REAL_SWAP.txs.lock_b,    "#60a5fa")}
+            {txRow("3. EscrowFinish",     "release_b", REAL_SWAP.txs.release_b, "#4ade80")}
+            {txRow("4. Release Soroban",  "release_a", REAL_SWAP.txs.release_a, "#4ade80")}
           </div>
-          <div style={{ marginTop: "0.75rem", padding: "0.5rem", background: "#052e16", borderRadius: "0.25rem", fontSize: "0.7rem", color: "#4ade80" }}>
-            ✓ Secret revealed in tx #3 → used by counterparty in tx #4. Atomic by cryptography.
+          <div style={{ marginTop: "0.75rem", padding: "0.6rem", background: "#052e16", borderRadius: "0.25rem", fontSize: "0.7rem", color: "#4ade80", lineHeight: 1.6 }}>
+            ✓ La preimagen se revela en la tx #3 y queda pública en el ledger de XRPL; la
+            contraparte la usa en la #4. Atómico por criptografía, no por confianza.
+            <div style={{ marginTop: "0.5rem", color: "#86efac", fontFamily: "monospace", fontSize: "0.62rem", wordBreak: "break-all" }}>
+              secret_hash <span style={{ color: "#4ade80" }}>{REAL_SWAP.secret_hash}</span>
+              <br />
+              condition &nbsp;&nbsp;<span style={{ color: "#6b7280" }}>A0258020</span>
+              <span style={{ color: "#4ade80" }}>{REAL_SWAP.secret_hash.toUpperCase()}</span>
+              <span style={{ color: "#6b7280" }}>810120</span>
+            </div>
+            <div style={{ marginTop: "0.35rem", color: "#86efac" }}>
+              El fingerprint de la condition de XRPL <strong>es</strong> el hash que valida
+              Soroban. Una sola preimagen gobierna las dos piernas.
+            </div>
           </div>
         </div>
       </div>
@@ -245,7 +288,7 @@ export default function SwapStatus({ apiUrl }: Props) {
           <div>
             <h3 style={{ margin: "0 0 0.25rem", fontSize: "1rem", color: "white" }}>Execute Live Swap</h3>
             <p style={{ margin: 0, fontSize: "0.75rem", color: "#6b7280" }}>
-              Plan → Execute → 4 Soroban txs on testnet (~2 min)
+              Plan → Execute → 2 txs en Soroban + 2 en XRPL, contra testnets reales
             </p>
           </div>
           <button

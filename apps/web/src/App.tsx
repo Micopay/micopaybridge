@@ -2,6 +2,7 @@ import { useState } from "react";
 import FundWidget from "./components/FundWidget";
 import ServiceCatalog from "./components/ServiceCatalog";
 import DemoTerminal from "./components/DemoTerminal";
+import SwapStatus from "./components/SwapStatus";
 import ZKDemoTerminal from "./components/ZKDemoTerminal";
 import ReputationPanel from "./components/ReputationPanel";
 import BazaarFeed from "./components/BazaarFeed";
@@ -11,7 +12,7 @@ import { useDemoStatus } from "./hooks/useDemoStatus";
 const API_URL =
   (import.meta as any).env?.VITE_API_URL ?? "http://localhost:3000";
 
-type Tab = "demo" | "zk" | "bazaar" | "reputation" | "fund" | "services";
+type Tab = "demo" | "swap" | "zk" | "bazaar" | "reputation" | "fund" | "services";
 
 // No login gate here on purpose: this dashboard is a human observer console
 // for the agent economy demo, not something an agent itself ever sees — the
@@ -24,6 +25,7 @@ export default function App() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "demo", label: "⚡ Demo" },
+    { id: "swap", label: "🌉 Swap XRPL↔Soroban" },
     { id: "zk", label: "🔐 ZK Access" },
     { id: "bazaar", label: "🕸️ Bazaar" },
     { id: "reputation", label: "⭐ Reputación" },
@@ -167,6 +169,7 @@ export default function App() {
       {/* Content */}
       <main style={{ padding: "1.5rem", maxWidth: "900px", margin: "0 auto" }}>
         {activeTab === "demo" && <DemoTerminal apiUrl={API_URL} />}
+        {activeTab === "swap" && <SwapStatus apiUrl={API_URL} />}
         {activeTab === "zk" && <ZKDemoTerminal apiUrl={API_URL} />}
         {activeTab === "bazaar" && <BazaarFeed apiUrl={API_URL} />}
         {activeTab === "reputation" && <ReputationPanel apiUrl={API_URL} />}

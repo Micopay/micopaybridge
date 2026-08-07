@@ -110,6 +110,26 @@ demo** —hace de las dos partes— no con las de ningún usuario. El flujo no c
 dos agentes independientes es el de [`packages/xrpl-bridge`](packages/xrpl-bridge/README.md)
 (`agent_a.js` / `agent_b.js`).
 
+La consola tiene la pestaña **🌉 Swap XRPL↔Soroban**: enseña este swap con cada tx
+enlazada a su explorador, y un botón que ejecuta uno nuevo contra las dos testnets.
+
+## Estado de la capa de pago x402
+
+El plan de split daba por abiertos dos agujeros. **Los dos están cerrados** en el código
+que se migró, y conviene saberlo antes de decidir si el demo se puede enseñar:
+
+- **SEC-13** — `verifyPayment()` ya no se queda en parsear la estructura del XDR:
+  envía la transacción a Horizon y exige confirmación (`middleware/x402.ts`), con
+  respaldo a comprobar si esa misma tx ya se liquidó. Someterla server-side es además
+  cómo se obtiene verificación real de firma: Horizon rechaza un sobre mal firmado.
+- **SEC-14** — el anti-replay ya persiste: `useDatabase` pasa a `true` tras
+  `initX402Tables()`. **Caveat:** si la base no arranca, cae a un `Set` en memoria con
+  solo un `console.warn`, y ahí la ventana de replay se reabre en cada reinicio.
+- El bypass `mock:` está detrás de `X402_MOCK_MODE` **y** `NODE_ENV !== production`.
+
+Nada de esto afectaba a la atomicidad del swap, que es criptográfica, sino a la capa que
+lo coordina.
+
 ## Desarrollo
 
 ```bash
