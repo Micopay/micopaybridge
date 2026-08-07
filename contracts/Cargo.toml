@@ -1,11 +1,16 @@
 [workspace]
-# Recortado del workspace de micopay-protocol (§M0.3 del plan de split).
-# Faltan por migrar en M1: micopay-escrow (el del servicio x402, NO el del
-# móvil — ver §1.2), micopay-badges y zk-verifier.
-members = [
-    "htlc-core",
-    "atomic-swap",
-]
+# Workspace sembrado en M0 (§M0.3 del plan). Cargo.lock y rust-toolchain.toml
+# van copiados tal cual del origen para no mover versiones.
+#
+# `members` vacío a propósito: los crates entran en M1.3, no antes. Mientras
+# tanto `cargo test` sale con código 101 ("the manifest is virtual, and the
+# workspace has no members") y el gate de CI está DORMIDO, no verde. Se
+# despierta solo cuando M1.3 llene esta lista.
+#
+# Migran: htlc-core, atomic-swap, zk-verifier y micopay-escrow — este último
+# el del servicio x402, NO el del móvil (§1.2). micopay-badges está sin
+# decidir (§2.3): no se arrastra hasta que Eric confirme si está vivo.
+members = []
 resolver = "2"
 
 [profile.release]
