@@ -14,6 +14,7 @@ salió por el split de agosto 2026. **Aquí no vive nada del APK ni de la app m�
 | `packages/sdk/` | `AtomicSwapClient` (`lock/release/refund/getStatus`) | migrado |
 | `apps/agent/` | AIGENTS: intent parser, executor, tools | migrado |
 | `apps/api/` | API de protocolo x402 | migrado **filtrado** — ver abajo |
+| `apps/web/` | Consola de demos del agente (sin login: es un observador humano, no algo que un agente vea) | migrado **filtrado** — ver abajo |
 | `contracts/htlc-core/` | Primitivas HTLC compartidas (`MIN_TIMEOUT_LEDGERS`, TTL) | migrado tal cual |
 | `contracts/atomic-swap/` | `AtomicSwapHTLC` — el contrato que la pierna XRPL espeja | migrado tal cual |
 | `contracts/micopay-escrow/` | Escrow del **servicio x402** | migrado tal cual |
@@ -32,11 +33,21 @@ Con ellas se fueron sus servicios (`etherfuse`, `merchant`, `p2p`, `p2p-registry
 `index.ts` — tampoco lo estaban en el origen. Cablearlos es una decisión de producto,
 no de migración.
 
+### Qué se quedó fuera de `apps/web`
+
+`App.tsx` no tiene router: monta seis pestañas y nada más. Todo `src/pages/` era
+**inalcanzable** — doce pantallas retail duplicadas de `micopay/frontend`, más
+`BottomNav`, `Logo`, `MapSim`, `MerchantCard`, `Skeleton`, `services/api.ts` y las
+imágenes de `public/` que solo usaba el mapa. Nada de eso se migró.
+
+`SwapStatus.tsx` sí se migra aunque hoy no lo importa nadie: el §M5 del plan lo nombra
+como material del demo, y es donde entrará la pierna XRPL cuando sustituya a
+`ATOMIC_SWAP_CONTRACT_B`.
+
 ## Qué falta migrar
 
-`apps/web` (filtrado) y `contracts/micopay-badges`, este último **sin decidir**: el plan
-lo deja abierto en §2.3 y no aparece referenciado ni en `render.yaml` ni en
-`.env.example`.
+Solo `contracts/micopay-badges`, y está **sin decidir**: el plan lo deja abierto en §2.3
+y no aparece referenciado ni en `render.yaml` ni en `.env.example`.
 
 ## La frontera entre los dos repos
 
