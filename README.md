@@ -66,13 +66,35 @@ buscado en todas las ramas remotas y en la historia completa. Ver
 Los dos escrows **divergieron en abril y no son intercambiables**. Difieren en 78 líneas.
 Unificarlos sería un cambio de comportamiento en producción disfrazado de limpieza.
 
-**Sin resolver — la frontera del §M3.** `apps/api/src/routes/reputation.ts` sirve tiers de
-reputación a agentes detrás de x402, pero los calcula leyendo datos de comercios que tras
-el split son del backend móvil. Se migró con un `TODO` visible en el import: hoy es la
-opción (a), leer el mismo esquema. La recomendada es la (b) — que `micopay/backend` exponga
-un endpoint interno de reputación y este repo lo consuma, con un contrato explícito y
-versionable. Mientras siga así, **una migración del móvil puede romper a los agentes sin
-avisar**.
+### La frontera del §M3 — decidida: opción (b)
+
+`apps/api` sirve reputación de comercios a agentes detrás de x402, pero esos datos son del
+producto retail. **La decisión es la (b):** `micopay/backend` expone un endpoint interno y
+este repo lo consume, con un contrato versionado. No la (c) —cada repo con su copia—, que
+es la deriva que el commit `1811016` ya documentó.
+
+El lado cliente **está hecho**: [`lib/reputation-source.ts`](apps/api/src/lib/reputation-source.ts).
+El servidor no se puede escribir desde aquí, vive en el otro repo y es producción. El
+contrato que tiene que implementar está en
+[`docs/CONTRATO_REPUTACION.md`](docs/CONTRATO_REPUTACION.md).
+
+Mientras el endpoint no exista se usa la (a) —leer el mismo esquema— como respaldo, y el
+arranque lo grita en el log. Cambiar de una a otra es una variable de entorno:
+
+```bash
+MICOPAY_BACKEND_URL=http://micopay-backend.internal:3002
+```
+
+Lo que se gana ya, sin esperar al otro equipo: **el acoplamiento cabe en un archivo**. No
+queda ni un `import` de `db/merchants` en las rutas, y la ruta de reputación no sabe de
+dónde salen los datos — hay un test que compara la respuesta con las dos fuentes y exige
+que sea idéntica.
+
+**Un fallo que salió al tocar esto:** la consulta de `/api/v1/reputation/:address` **no
+filtraba por la dirección pedida**. Ordenaba por `verified_at` y devolvía `LIMIT 1`, así
+que cualquier dirección válida obtenía siempre el mismo comercio — en la ruta cuya única
+función es decidir si fiarse de uno en concreto, y que además cobra por responder.
+Corregido, con test de regresión.
 
 ## Origen del código migrado
 

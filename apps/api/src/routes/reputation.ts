@@ -1,15 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { requirePayment } from "../middleware/x402.js";
 import { query } from "../db/schema.js";
-// TODO(§M3 del plan de split) — FRONTERA ENTRE LOS DOS REPOS, SIN RESOLVER.
-// Esta ruta sirve reputación a agentes detrás de x402, pero la calcula
-// leyendo datos de comercios que después del split son del backend móvil
-// (micopay/backend). Hoy esto es la opción (a): leer el mismo esquema. La
-// recomendada es la (b): que el backend móvil exponga un endpoint interno
-// de reputación y este repo lo consuma, con un contrato explícito y
-// versionable. Mientras siga así, una migración del móvil puede romper a
-// los agentes sin avisar.
-import { getVerifiedMerchants } from "../db/merchants.js";
+// La frontera del §M3 vive entera en lib/reputation-source.ts: esta ruta no
+// sabe si los datos llegan del endpoint interno del backend móvil (opción b,
+// la recomendada) o de leer su misma base (opción a, el respaldo de hoy).
+import { getReputationSource, type MerchantReputation } from "../lib/reputation-source.js";
 
 // ── Tier definitions ─────────────────────────────────────────────────────────
 const TIERS = [
@@ -49,30 +44,34 @@ export async function reputationRoutes(fastify: FastifyInstance): Promise<void> 
         });
       }
 
-      // Query merchant from database
-      const merchantResult = await query(`
-        SELECT m.display_name, m.latitude, m.longitude, m.address_text,
-               m.trades_completed, m.completion_rate, m.avg_time_minutes,
-               m.tier, m.total_volume_usdc, m.last_trade_at, m.verified_at,
-               u.stellar_address
-        FROM merchants m
-        LEFT JOIN users u ON m.user_id = u.id
-        WHERE m.verification_status = 'verified'
-        ORDER BY m.verified_at DESC
-        LIMIT 1
-      `);
-
-      // If no merchant found, return placeholder data
-      if (!merchantResult.rows[0]) {
-        return reply.status(404).send({
-          error: "No verified merchant found",
-          hint: "This Stellar address does not correspond to a verified merchant",
+      // La consulta que había aquí NO filtraba por la dirección pedida:
+      // ordenaba por verified_at y devolvía el primero. Cualquier dirección
+      // válida obtenía siempre el mismo comercio, así que un agente que
+      // pagaba por saber si fiarse del comercio X recibía los números del
+      // comercio Y — en la ruta cuya única función es informar esa decisión.
+      let merchant: MerchantReputation | null;
+      try {
+        merchant = await getReputationSource().byAddress(address);
+      } catch (err) {
+        // Que la fuente de reputación esté caída no es un 404: un 404 diría
+        // "este comercio no es de fiar", que es una respuesta distinta y
+        // peligrosa. Se dice que no se sabe.
+        return reply.status(503).send({
+          error: "Reputation source unavailable",
+          detail: err instanceof Error ? err.message : String(err),
         });
       }
 
-      const merchant = merchantResult.rows[0];
-      const tradesCompleted = parseInt(merchant.trades_completed) || 0;
-      const completionRate = parseFloat(merchant.completion_rate) || 0;
+      if (!merchant) {
+        return reply.status(404).send({
+          error: "No verified merchant found",
+          hint: "This Stellar address does not correspond to a verified merchant",
+          address,
+        });
+      }
+
+      const tradesCompleted = merchant.trades_completed;
+      const completionRate = merchant.completion_rate;
       const tier = getTier(tradesCompleted, completionRate);
 
       // Agent-friendly decision signal
@@ -85,7 +84,7 @@ export async function reputationRoutes(fastify: FastifyInstance): Promise<void> 
         address: merchant.stellar_address,
         merchant: {
           name: merchant.display_name,
-          location: merchant.address_text,
+          location: merchant.location,
         },
         reputation: {
           tier: tier.name,
@@ -95,8 +94,8 @@ export async function reputationRoutes(fastify: FastifyInstance): Promise<void> 
           completion_rate: completionRate,
           completion_percent: `${(completionRate * 100).toFixed(1)}%`,
           avg_time_minutes: merchant.avg_time_minutes,
-          total_volume_usdc: parseFloat(merchant.total_volume_usdc).toFixed(2),
-          on_chain_since: merchant.verified_at || merchant.created_at,
+          total_volume_usdc: merchant.total_volume_usdc.toFixed(2),
+          on_chain_since: merchant.verified_at,
           nft_soulbound: null, // Planned for future implementation
         },
         agent_signal: {
@@ -120,26 +119,17 @@ export async function reputationRoutes(fastify: FastifyInstance): Promise<void> 
     "/api/v1/merchants",
     async (_request, reply) => {
       try {
-        const merchants = await getVerifiedMerchants();
+        // La normalización de tipos vive ahora en reputation-source: pg
+        // devuelve los NUMERIC como string aunque el tipo diga number, y eso
+        // se resuelve en un sitio en vez de en cada consumidor.
+        const merchants = await getReputationSource().listVerified();
 
-        // Calculate tier for each merchant
-        //
-        // parseInt/parseFloat esperaban string, pero PublicMerchantRow declara
-        // los dos campos como number (db/merchants.ts) — de ahí los tres TS2345.
-        // Number() es el arreglo correcto en vez de castear: acepta las dos
-        // formas. Importa porque en runtime no coinciden con el tipo:
-        // trades_completed es INTEGER y pg lo devuelve como number, pero
-        // completion_rate es DECIMAL(5,4) y pg devuelve los NUMERIC como
-        // string para no perder precisión.
         const merchantsWithTier = merchants.map((m) => {
-          const tier = getTier(
-            Number(m.trades_completed) || 0,
-            Number(m.completion_rate) || 0
-          );
+          const tier = getTier(m.trades_completed, m.completion_rate);
           return {
             ...m,
             tier: tier.name,
-            completion_percent: `${(Number(m.completion_rate) * 100).toFixed(1)}%`,
+            completion_percent: `${(m.completion_rate * 100).toFixed(1)}%`,
           };
         });
 
