@@ -1,5 +1,8 @@
 node_modules/
 .env
+.env.*
 *.log
 relay-state.json
 relay-state.json.tmp
+.turbo/
+target/

@@ -1,0 +1,62 @@
+name: CI
+
+# Gate de build desde el primer commit (§M0.4 del plan de split).
+# El repo de origen se rompió antes por no tener gate: aquí los tres pasos
+# son BLOQUEANTES y no llevan continue-on-error. Si algo no compila o un
+# test falla, el merge se para.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: Typecheck + tests (workspaces npm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # Gate 1 — tipos. Cada workspace con TypeScript declara su propio
+      # script `typecheck` (tsc --noEmit); turbo los corre todos. Un
+      # workspace de TS que no lo declare se está saltando el gate: revisarlo
+      # en la revisión de código, no aquí.
+      - name: Typecheck — BLOQUEANTE
+        run: npm run typecheck
+
+      # Gate 2 — tests de los workspaces. Solo los que corren offline; la
+      # suite contra testnets reales es `npm run test:live` y no va en CI
+      # porque necesita identidades fondeadas.
+      - name: Tests — BLOQUEANTE
+        run: npm test
+
+  rust:
+    name: Contratos Soroban (cargo test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+      # rust-toolchain.toml fija el canal y el target wasm32; rustup lo respeta.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: cargo-${{ hashFiles('contracts/Cargo.lock') }}
+
+      # Gate 3 — los contratos que se migran deben pasar sus propios tests.
+      - name: cargo test — BLOQUEANTE
+        run: cargo test --workspace

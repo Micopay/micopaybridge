@@ -1,19 +1,24 @@
 {
-  "name": "xrpl-escrow",
+  "name": "micopaybridge",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "packageManager": "npm@10.9.4",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "test": "node bridge-translate.test.js && node relay-state.test.js",
-    "test:live": "node failure_suite.js"
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "@stellar/stellar-sdk": "^16.0.1",
-    "five-bells-condition": "^5.0.1",
-    "xrpl": "^5.0.0"
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }
