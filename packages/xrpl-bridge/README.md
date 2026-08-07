@@ -60,9 +60,10 @@ El relay jamás custodia: solo retransmite una preimagen que ya es pública.
 
 ## Cómo correr
 
-```bash
-npm install
+Las dependencias se instalan desde la raíz del monorepo (`npm install`); los scripts se
+corren desde esta carpeta.
 
+```bash
 # 1. Primitiva XRPL sola (2 wallets faucet, escrow condicional)
 node escrow_demo.js
 
