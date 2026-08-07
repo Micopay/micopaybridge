@@ -18,15 +18,29 @@ let x402Initialized = false;
 // in-memory Set, which a restart wipes clean (replay window reopens).
 let useDatabase = false;
 
+// Cuando la inicialización falla, x402Initialized se queda en false y ANTES
+// eso significaba reintentar la conexión en CADA verificación de pago: con la
+// base caída, todas las peticiones pagaban el coste de conectar, y en la suite
+// eso son decenas de intentos por corrida compitiendo por sockets. Con backoff
+// se intenta una vez y no se vuelve a probar hasta pasado el intervalo.
+let ultimoIntentoDb = 0;
+const REINTENTO_DB_MS = Number(process.env.X402_DB_RETRY_MS ?? 30_000);
+
 async function ensureX402Initialized() {
   if (x402Initialized) return;
+  const ahora = Date.now();
+  if (ultimoIntentoDb !== 0 && ahora - ultimoIntentoDb < REINTENTO_DB_MS) return;
+  ultimoIntentoDb = ahora;
   try {
     await initX402Tables();
     await cleanupExpiredPayments();
     x402Initialized = true;
     useDatabase = true;
   } catch (error) {
-    console.warn('x402 DB init failed (will use in-memory fallback):', error);
+    console.warn(
+      `x402 DB init failed (in-memory fallback; siguiente intento en ${REINTENTO_DB_MS / 1000}s):`,
+      error instanceof Error ? error.message : error
+    );
     useDatabase = false;
   }
 }

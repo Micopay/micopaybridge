@@ -218,6 +218,9 @@ Los tres corren en CI y son bloqueantes. La suite contra testnets reales
 (`npm run test:live -w @micopaybridge/xrpl-bridge`) **no** va en CI: necesita identidades
 de Stellar fondeadas y tarda ~5 min.
 
+Los tests no necesitan Postgres ni red. Si algo de eso hace falta para que pasen, es un
+test mal escrito: lo que se prueba es la lógica, no que la testnet esté de buenas.
+
 ## Licencia
 
 MIT © Micopay.

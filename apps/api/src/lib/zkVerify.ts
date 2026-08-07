@@ -7,6 +7,13 @@ const RPC_URL =
   process.env.SOROBAN_RPC_URL ?? "https://soroban-testnet.stellar.org";
 const NET = StellarSdk.Networks.TESTNET;
 
+// Espera entre sondeos de confirmación. Era 2000 fijo, y con dos bucles así
+// cada test que pasa por aquí cargaba 2 s contra el presupuesto de 5 s que da
+// vitest por defecto: 2,5x de margen, que la contención de correr varios
+// workspaces en paralelo se come. Configurable para poder ponerlo a 0 en
+// tests, y porque no todas las redes cierran ledgers al mismo ritmo.
+const POLL_INTERVAL_MS = Number(process.env.SOROBAN_POLL_INTERVAL_MS ?? 2000);
+
 // Number of public inputs expected per circuit (shape validation).
 export const CIRCUIT_SPECS: Record<string, { numInputs: number }> = {
   poseidon_preimage: { numInputs: 1 }, // [hash]
@@ -134,7 +141,7 @@ export async function invokeVerify(
   const MAX_RETRIES = 30;
   let attempts = 0;
   do {
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     const status = await rpc.getTransaction(sent.hash);
     if (status.status === "SUCCESS") return { verified: true, txHash: sent.hash };
     if (status.status === "FAILED") return { verified: false, txHash: sent.hash };
@@ -184,7 +191,7 @@ export async function setReputationRoot(rootDecimal: string): Promise<string> {
   }
   let attempts = 0;
   do {
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     const status = await rpc.getTransaction(sent.hash);
     if (status.status === "SUCCESS") return sent.hash;
     if (status.status === "FAILED") throw new Error(`set_reputation_root failed: ${sent.hash}`);

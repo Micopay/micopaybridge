@@ -6,7 +6,15 @@ let pool: pg.Pool | null = null;
 
 function getPool(): pg.Pool {
   if (!pool) {
-    pool = new Pool({ connectionString: config.databaseUrl });
+    pool = new Pool({
+      connectionString: config.databaseUrl,
+      // pg trae connectionTimeoutMillis en 0, que significa esperar para
+      // siempre. Con la base rechazando conexión falla rápido, pero con un
+      // host que no responde —firewall, DNS lento— la petición se queda
+      // colgada sin límite. Un pago x402 no puede esperar indefinidamente a
+      // una base que además es opcional: hay fallback en memoria.
+      connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS ?? 5_000),
+    });
     pool.on('error', (err: Error) => {
       console.error('PostgreSQL error:', err.message);
     });
