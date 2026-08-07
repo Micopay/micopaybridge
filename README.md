@@ -132,6 +132,36 @@ base de datos: es el mínimo para que un reinicio no pierda de vista dinero bloq
 Antes era un `Map` en RAM, y el `owner`/`offer_sequence` del escrow —lo único con lo que se
 puede cancelar— moría con el proceso.
 
+### Si el proceso muere a mitad
+
+Al arrancar, la API revisa **contra las cadenas** qué quedó abierto. La verdad está en el
+ledger, no en el estado guardado, que puede haberse quedado corto justo por el crash.
+
+**La preimagen no se persiste, y es a propósito.** Es lo único que separa un swap atómico
+de un robo: si la contraparte la obtiene sin haber revelado en su pierna, cobra la del
+iniciador y no entrega nada. Escribirla en disco sería cambiar atomicidad por comodidad.
+
+Eso deja dos finales, y la diferencia es dónde murió:
+
+- **Después de revelar** → la preimagen ya es pública en el `EscrowFinish`. Se saca del
+  ledger y se cobra la pierna de Soroban. **El swap se completa.**
+- **Antes de revelar** → el secreto se fue con el proceso. Único final correcto:
+  reembolsar las dos piernas. Lo que aún no ha vencido queda en un reintento cada 5 min.
+
+```bash
+npm run test:recovery -w @micopay/api
+```
+
+Mata el proceso en el peor momento —justo tras el `EscrowFinish`, con el XRP ya cobrado y
+el XLM sin cobrar—, **descarta la preimagen** y arranca de nuevo. Corrido contra testnets:
+
+```
+[recovery] 1 swap(s) a medias ["crash_…:released_b"]
+[recovery] preimagen recuperada del ledger, cobrando la pierna de Soroban
+[recovery] completado {"release_a":"ed33bcf8501f351446d55745bf0d6354ff342f5ad18c7c3bee14ba17aef96712"}
+estado on-chain: "Released"
+```
+
 Corrido contra ambas testnets, 24 s de punta a punta:
 
 | Paso | Cadena | Tx |

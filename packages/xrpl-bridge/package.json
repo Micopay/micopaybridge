@@ -9,7 +9,10 @@
       "types": "./bridge-translate.d.ts",
       "default": "./bridge-translate.js"
     },
-    "./relay": "./relay.js"
+    "./relay": {
+      "types": "./relay.d.ts",
+      "default": "./relay.js"
+    }
   },
   "scripts": {
     "test": "node bridge-translate.test.js && node relay-state.test.js && node dts-drift.test.js",

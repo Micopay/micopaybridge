@@ -11,6 +11,7 @@ import { describe, it, expect } from "vitest";
 import { Keypair } from "@stellar/stellar-sdk";
 import * as bt from "@micopaybridge/xrpl-bridge/bridge-translate";
 import { executeAtomicSwapBackground } from "../lib/soroban.js";
+import { recoverInFlightSwaps } from "../lib/recovery.js";
 import { swapStore, pendingRefunds, TX_CHAIN, type SwapState } from "../lib/swapStore.js";
 
 function seedSwap(swapId: string, buyAsset: string): void {
@@ -138,6 +139,25 @@ describe("pierna XRPL — guardas de la orquestación", () => {
 
     expect(condition.slice(8, 8 + 64)).toBe(sorobanHash.toString("hex").toUpperCase());
     expect(bt.xrplConditionFromHash(sorobanHash)).toBe(condition);
+  });
+
+  it("recuperación: un swap sin nada bloqueado no se marca para reembolso", async () => {
+    // Si no se llegó a firmar nada, no hay dinero que devolver. Marcarlo
+    // refund_pending metería ruido en la cola que un operador tiene que
+    // mirar, que es justo donde no se puede meter ruido.
+    const swapId = "swap_sin_locks";
+    seedSwap(swapId, "XRP");
+
+    const report = await recoverInFlightSwaps({
+      initiatorSecret: Keypair.random().secret(),
+      counterpartySecret: Keypair.random().secret(),
+      contractA: "CCDOUXIXSFXT2HTJAJGFNUJN6CKCYX2M6AL2BHHPEF6ISNHP2BGLS4KX",
+      xrplLeg,
+    });
+
+    expect(report.revisados).toBeGreaterThan(0);
+    expect(swapStore.get(swapId)!.status).toBe("queued");
+    expect(pendingRefunds().map((s) => s.swap_id)).not.toContain(swapId);
   });
 
   it("cada tx sabe en qué cadena vive, para no enlazar al explorador equivocado", () => {

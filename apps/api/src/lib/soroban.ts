@@ -224,6 +224,44 @@ export async function executeAtomicSwapBackground(
 }
 
 /**
+ * Cobra la pierna de Soroban con una preimagen ya revelada.
+ *
+ * Existe aparte del flujo principal porque la recuperación tras un crash la
+ * necesita: si el proceso murió después del EscrowFinish, la preimagen está
+ * pública en el ledger de XRPL y el swap todavía se puede cerrar bien.
+ */
+export async function claimSorobanWithSecret(
+  swapId: string,
+  counterpartySecret: string,
+  contractA: string,
+  preimage: Buffer,
+): Promise<string> {
+  const counterpartyKP = StellarSdk.Keypair.fromSecret(counterpartySecret);
+  const htlcSwapId = bt.sorobanSwapId(preimage).toString("hex");
+
+  const current = swapStore.get(swapId);
+  if (current) {
+    swapStore.set(swapId, { ...current, status: "releasing_a", updated_at: new Date().toISOString() });
+  }
+
+  const hash = await invokeContract(counterpartyKP, contractA, "release", [
+    bytesVal(htlcSwapId),
+    bytesVal(preimage.toString("hex")),
+  ]);
+
+  const after = swapStore.get(swapId);
+  if (after) {
+    swapStore.set(swapId, {
+      ...after,
+      status: "completed",
+      txs: { ...after.txs, release_a: hash },
+      updated_at: new Date().toISOString(),
+    });
+  }
+  return hash;
+}
+
+/**
  * Devuelve los fondos de un swap que se quedó a medias.
  *
  * No hay prisa ni magia: las dos cadenas solo permiten reembolsar DESPUÉS del

@@ -14,6 +14,8 @@ import { credentialRoutes } from "./routes/credentials.js";
 import { bazaarRoutes } from "./routes/bazaar.js";
 import { agentRoutes } from "./routes/agent.js";
 import { swapRoutes } from "./routes/swaps.js";
+import { recoverInFlightSwaps, startRefundRetryLoop } from "./lib/recovery.js";
+import { pendingRefunds } from "./lib/swapStore.js";
 import { config } from "./config.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
@@ -124,8 +126,48 @@ export async function createApp() {
   return app;
 }
 
+/**
+ * Un swap a medias no se arregla solo. Al arrancar se revisa contra las
+ * cadenas qué quedó abierto: lo que se reveló antes del crash se completa
+ * recuperando la preimagen del ledger, y lo que no, se reembolsa. Los que aún
+ * no han vencido quedan en el reintento periódico.
+ *
+ * No bloquea el arranque ni lo tumba: si esto falla, la API tiene que seguir
+ * atendiendo, pero el fallo se ve en el log.
+ */
+async function arrancarRecuperacion() {
+  const initiatorSecret = process.env.PLATFORM_SECRET_KEY;
+  const counterpartySecret = process.env.DEMO_AGENT_SECRET_KEY;
+  const initiatorSeed = process.env.XRPL_INITIATOR_SEED;
+  const counterpartySeed = process.env.XRPL_COUNTERPARTY_SEED;
+
+  if (!initiatorSecret || !counterpartySecret || !initiatorSeed || !counterpartySeed) {
+    const colgados = pendingRefunds().length;
+    console.warn(
+      `[recovery] llaves de demo sin configurar: no se revisan swaps a medias` +
+      (colgados > 0 ? ` — HAY ${colgados} CON FONDOS BLOQUEADOS` : "")
+    );
+    return;
+  }
+
+  const config = {
+    initiatorSecret,
+    counterpartySecret,
+    contractA: process.env.ATOMIC_SWAP_CONTRACT_A ?? "CCDOUXIXSFXT2HTJAJGFNUJN6CKCYX2M6AL2BHHPEF6ISNHP2BGLS4KX",
+    xrplLeg: { initiatorSeed, counterpartySeed },
+  };
+
+  try {
+    await recoverInFlightSwaps(config);
+  } catch (err) {
+    console.error("[recovery] falló la revisión de arranque:", err);
+  }
+  startRefundRetryLoop(config);
+}
+
 async function start() {
   const app = await createApp();
+  await arrancarRecuperacion();
 
   // Log security configuration on startup
   console.log(`[SECURITY] NODE_ENV: ${NODE_ENV}`);

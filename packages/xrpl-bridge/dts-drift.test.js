@@ -1,5 +1,5 @@
-// bridge-translate.d.ts está escrito a mano: describe un módulo CommonJS que
-// nadie compila desde TypeScript. Sin esta prueba, el .d.ts puede mentir y
+// Los .d.ts de este paquete están escritos a mano: describen módulos CommonJS
+// que nadie compila desde TypeScript. Sin esta prueba pueden mentir y
 // `tsc --noEmit` pasa igual — el gate de tipos sale verde y el consumidor
 // revienta en runtime con "is not a function".
 //
@@ -10,44 +10,47 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const bt = require("./bridge-translate");
 
-const dts = fs.readFileSync(path.join(__dirname, "bridge-translate.d.ts"), "utf8");
-
-const declarados = new Set(
-  [...dts.matchAll(/^export declare (?:function|const)\s+(\w+)/gm)].map((m) => m[1])
-);
-const exportados = new Set(Object.keys(bt));
+const MODULOS = ["bridge-translate", "relay"];
 
 let fallos = 0;
+let comprobados = 0;
 
-for (const nombre of declarados) {
-  if (!exportados.has(nombre)) {
-    console.error(`  ✗ el .d.ts declara "${nombre}" y bridge-translate.js NO lo exporta`);
-    fallos++;
+for (const modulo of MODULOS) {
+  const mod = require(`./${modulo}`);
+  const dts = fs.readFileSync(path.join(__dirname, `${modulo}.d.ts`), "utf8");
+
+  const declarados = new Set(
+    [...dts.matchAll(/^export declare (?:function|const|class)\s+(\w+)/gm)].map((m) => m[1])
+  );
+  const exportados = new Set(Object.keys(mod));
+
+  for (const nombre of declarados) {
+    if (!exportados.has(nombre)) {
+      console.error(`  ✗ ${modulo}.d.ts declara "${nombre}" y ${modulo}.js NO lo exporta`);
+      fallos++;
+    }
   }
+
+  for (const nombre of exportados) {
+    if (!declarados.has(nombre)) {
+      console.error(`  ✗ ${modulo}.js exporta "${nombre}" y ${modulo}.d.ts NO lo declara`);
+      fallos++;
+    }
+  }
+
+  // Lo declarado como función o clase tiene que serlo de verdad.
+  for (const m of dts.matchAll(/^export declare (function|class)\s+(\w+)/gm)) {
+    const [, tipo, nombre] = m;
+    if (exportados.has(nombre) && typeof mod[nombre] !== "function") {
+      console.error(`  ✗ ${modulo}.d.ts declara "${nombre}" como ${tipo} y es ${typeof mod[nombre]}`);
+      fallos++;
+    }
+  }
+
+  comprobados += declarados.size;
+  console.log(`ok - ${modulo}: ${declarados.size} exports coinciden en ambos sentidos`);
 }
 
-for (const nombre of exportados) {
-  if (!declarados.has(nombre)) {
-    console.error(`  ✗ bridge-translate.js exporta "${nombre}" y el .d.ts NO lo declara`);
-    fallos++;
-  }
-}
-
-// Los tipos declarados como `function` tienen que ser funciones de verdad.
-for (const m of dts.matchAll(/^export declare function\s+(\w+)/gm)) {
-  const nombre = m[1];
-  if (exportados.has(nombre) && typeof bt[nombre] !== "function") {
-    console.error(`  ✗ el .d.ts declara "${nombre}" como función y es ${typeof bt[nombre]}`);
-    fallos++;
-  }
-}
-
-assert.strictEqual(
-  fallos,
-  0,
-  `${fallos} discrepancia(s) entre bridge-translate.d.ts y bridge-translate.js`
-);
-
-console.log(`ok - .d.ts y .js coinciden (${declarados.size} exports comprobados en ambos sentidos)`);
+assert.strictEqual(fallos, 0, `${fallos} discrepancia(s) entre los .d.ts y sus .js`);
+console.log(`\n${comprobados} exports comprobados en ${MODULOS.length} módulos`);
