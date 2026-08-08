@@ -11,8 +11,7 @@ salió por el split de agosto 2026. **Aquí no vive nada del APK ni de la app m�
 |---|---|---|
 | `packages/xrpl-bridge/` | Pierna XRPL: traducción cripto/tiempo, relay de dos ledgers, suite de fallos y agentes de demo | ✅ verificado contra testnets reales — [README](packages/xrpl-bridge/README.md) |
 | `packages/types/` | Tipos compartidos | migrado |
-| `packages/sdk/` | `AtomicSwapClient` (`lock/release/refund/getStatus`) | migrado |
-| `apps/agent/` | AIGENTS: intent parser, executor, tools | migrado |
+| `packages/sdk/` | `AtomicSwapClient` (`lock/release/refund/getStatus`) | migrado, verificado contra testnet |
 | `apps/api/` | API de protocolo x402 | migrado **filtrado** — ver abajo |
 | `apps/web/` | Consola de demos del agente (sin login: es un observador humano, no algo que un agente vea) | migrado **filtrado** — ver abajo |
 | `contracts/htlc-core/` | Primitivas HTLC compartidas (`MIN_TIMEOUT_LEDGERS`, TTL) | migrado tal cual |
@@ -53,6 +52,32 @@ imágenes de `public/` que solo usaba el mapa. Nada de eso se migró.
 `SwapStatus.tsx` sí se migra aunque hoy no lo importa nadie: el §M5 del plan lo nombra
 como material del demo, y es donde entrará la pierna XRPL cuando sustituya a
 `ATOMIC_SWAP_CONTRACT_B`.
+
+## Qué se archivó
+
+`apps/agent/` (AIGENTS: intent parser, executor, tools — §2.1 del plan) se migró el
+2026-08-07 y se archivó el 2026-08-08, en `archive/apps-agent/`, fuera del workspace
+activo. Dos razones, las dos comprobadas ejecutando código, no leyéndolo:
+
+1. **Nadie lo usa.** Ningún `package.json` del monorepo depende de `@micopay/agent`;
+   `apps/api/routes/agent.ts` reimplementa su propio `planSwap` en vez de importarlo;
+   nunca se había compilado.
+2. **Su pieza central no puede funcionar.** `SwapExecutor` depende de
+   `checkChainBLock()`, que no consulta nada — inventa un hash y lo devuelve como si
+   fuera un lock real, siempre. Probado contra testnet: bloquea fondos de verdad en
+   cadena A y después revienta siempre al liberar en cadena B, sin camino automático
+   de refund para ese caso. Es más viejo que M4.5 — el mismo patrón de "cadena B
+   simulada" que el puente XRPL reemplazó en el resto del repo, pero aquí nadie lo
+   tocó porque nadie lo ejecutaba. Un solo commit toca `executor.ts` en toda la
+   historia de este repo: el de migrarlo, copia tal cual desde `micopay-protocol`.
+
+Lo que ya cumple el mismo objetivo (dos agentes, sin custodio, probado end-to-end):
+[`packages/xrpl-bridge`](packages/xrpl-bridge/README.md) (`agent_a.js` / `agent_b.js`).
+Detalle completo, con la corrida que lo prueba, en
+[`archive/apps-agent/ARCHIVADO.md`](archive/apps-agent/ARCHIVADO.md).
+
+`packages/sdk` no se archivó — su mecanismo (`lock`/`release`/`getStatus`) funciona
+bien, verificado hoy contra testnet. Solo se quedó sin consumidor vivo.
 
 ## Qué falta migrar
 
