@@ -8,6 +8,7 @@ import {
 import type { SwapStatus } from "@micopay/types";
 import {
   buildContractTx,
+  buildSimulationTx,
   signAndSubmit,
   waitForConfirmation,
   type Network,
@@ -121,19 +122,21 @@ export class AtomicSwapClient {
 
   /**
    * Get swap status (simulation — no fee).
+   *
+   * No usa buildContractTx(): esa función pide la cuenta real a la red
+   * (server.getAccount) para leer su sequence number, y antes se le pasaba
+   * una Keypair.random() — una cuenta que nunca existió on-chain. Fallaba
+   * siempre con "Account not found", para cualquier swap_id, y nadie lo
+   * había notado porque nada en el repo llamaba a este método: su único
+   * consumidor, apps/agent/executor.ts, no lo importa nadie (apps/agent
+   * entero está desconectado del sistema vivo). buildSimulationTx
+   * construye la cuenta a mano en vez de pedírsela a la red: para simular
+   * (no firmar ni enviar) no hace falta que exista.
    */
   async getStatus(swapId: string): Promise<SwapStatus> {
     const args = [xdr.ScVal.scvBytes(Buffer.from(swapId, "hex"))];
-    const dummyKeypair = Keypair.random();
 
-    const tx = await buildContractTx(
-      this.server,
-      this.network,
-      dummyKeypair,
-      this.contractId,
-      "get_status",
-      args
-    );
+    const tx = buildSimulationTx(this.network, this.contractId, "get_status", args);
 
     const result = await this.server.simulateTransaction(tx);
 
@@ -145,7 +148,14 @@ export class AtomicSwapClient {
       .result?.retval;
     if (!returnVal) throw new Error("No return value from get_status()");
 
-    const raw = scValToNative(returnVal) as string;
-    return raw.toLowerCase() as SwapStatus;
+    // SwapStatus es un #[contracttype] enum sin datos asociados (htlc-core
+    // types.rs: Locked/Released/Refunded). Soroban lo codifica como un
+    // Vec<Symbol> de un elemento, y scValToNative() lo decodifica como
+    // ["Locked"], no "Locked" — comprobado en testnet, no en la doc. El
+    // código original asumía string y tronaba con "raw.toLowerCase is not
+    // a function" en la primera llamada real que se hizo, siempre.
+    const raw = scValToNative(returnVal);
+    const variant = Array.isArray(raw) ? raw[0] : raw;
+    return String(variant).toLowerCase() as SwapStatus;
   }
 }

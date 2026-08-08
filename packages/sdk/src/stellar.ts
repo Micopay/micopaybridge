@@ -1,4 +1,5 @@
 import {
+  Account,
   Contract,
   Keypair,
   Networks,
@@ -56,6 +57,39 @@ export async function buildContractTx(
 
   const prepared = await server.prepareTransaction(tx);
   return prepared as Transaction;
+}
+
+/**
+ * Build a transaction for a read-only SIMULATION — no real account needed.
+ *
+ * getStatus() usaba buildContractTx() con una Keypair.random() como
+ * firmante. server.getAccount() (dentro de buildContractTx) exige que esa
+ * cuenta exista on-chain para leer su sequence number — una cuenta al azar
+ * nunca existe, así que esto fallaba con "Account not found" en TODA
+ * llamada, para cualquier swap_id. Se descubrió probando AtomicSwapClient
+ * en aislado: nada en el repo lo llamaba, así que nunca se había ejecutado.
+ *
+ * simulateTransaction no firma ni ejecuta nada real: no hace falta que la
+ * cuenta origen exista, solo que el XDR tenga forma válida. Se construye la
+ * cuenta a mano con sequence "0" en vez de pedírsela a la red — sin viaje
+ * de red, sin depender de que exista.
+ */
+export function buildSimulationTx(
+  network: Network,
+  contractId: string,
+  method: string,
+  args: xdr.ScVal[]
+): Transaction {
+  const dummyAccount = new Account(Keypair.random().publicKey(), "0");
+  const contract = new Contract(contractId);
+
+  return new TransactionBuilder(dummyAccount, {
+    fee: "100000",
+    networkPassphrase: getNetworkPassphrase(network),
+  })
+    .addOperation(contract.call(method, ...args))
+    .setTimeout(180)
+    .build() as Transaction;
 }
 
 /**
