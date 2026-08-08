@@ -128,8 +128,8 @@ export class AtomicSwapClient {
    * una Keypair.random() — una cuenta que nunca existió on-chain. Fallaba
    * siempre con "Account not found", para cualquier swap_id, y nadie lo
    * había notado porque nada en el repo llamaba a este método: su único
-   * consumidor, apps/agent/executor.ts, no lo importa nadie (apps/agent
-   * entero está desconectado del sistema vivo). buildSimulationTx
+   * consumidor era executor.ts, y nada lo importaba — por eso ahora vive
+   * archivado en archive/apps-agent/, ver ARCHIVADO.md. buildSimulationTx
    * construye la cuenta a mano en vez de pedírsela a la red: para simular
    * (no firmar ni enviar) no hace falta que exista.
    */

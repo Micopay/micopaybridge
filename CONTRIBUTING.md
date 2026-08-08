@@ -15,7 +15,6 @@ Dentro:
 - `packages/xrpl-bridge/` — pierna XRPL: traducción cripto/tiempo, relay, suite de fallos
 - `packages/types/`, `packages/sdk/` — tipos y `AtomicSwapClient`
 - `apps/api/` — API de protocolo x402
-- `apps/agent/` — AIGENTS
 - `apps/web/` — consola del demo
 - `contracts/`, `circuits/` — Soroban y Noir
 
@@ -48,7 +47,7 @@ Reglas que salieron de romperlas antes:
   cuyo tipo no coincidía con lo que la base devuelve en runtime.
 - **Los tests que cuestan dinero o red no van en `test`.** Van en `test:live` y se corren
   a mano: la suite contra testnets de `xrpl-bridge` (~5 min, necesita identidades
-  fondeadas) y el smoke del intent parser de `apps/agent` (necesita `ANTHROPIC_API_KEY`).
+  fondeadas).
 
 En Windows, `cargo test` nativo puede no compilar por falta de linker. La salida es
 correrlo en contenedor, que además es el mismo SO que CI:

@@ -18,10 +18,10 @@ export interface SwapPlan {
     address: string;
     chain: string;
     /**
-     * Lo emite el intent parser de apps/agent (intent-parser.ts:152) y el
-     * prompt del sistema razona con él, pero el tipo nunca lo declaró: el
-     * campo se producía y se tiraba. Opcional para no romper a quien
-     * construya un SwapPlan sin reputación.
+     * Lo emite el intent parser que ahora vive en archive/apps-agent/
+     * (intent-parser.ts:152) y el prompt del sistema razona con él, pero el
+     * tipo nunca lo declaró: el campo se producía y se tiraba. Opcional para
+     * no romper a quien construya un SwapPlan sin reputación.
      */
     reputation_score?: number;
   };
