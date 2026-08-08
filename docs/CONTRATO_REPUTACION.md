@@ -28,7 +28,7 @@ datos de comercios.
 
 ```json
 {
-  "stellar_address": "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN",
+  "stellar_address": "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG",
   "display_name": "Abarrotes Doña Mari",
   "location": "Av. Insurgentes Sur 1234, CDMX",
   "trades_completed": 47,

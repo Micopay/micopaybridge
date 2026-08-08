@@ -3,9 +3,9 @@ import { useState } from "react";
 interface Props { apiUrl: string; }
 
 const KNOWN_MERCHANTS = [
-  { address: "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN", label: "Farmacia Guadalupe (Maestro 🍄)" },
-  { address: "GDAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42RBW3K6BTODB4A", label: "Tienda Don Pepe (Experto ⭐)" },
-  { address: "GAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42RBW3K6BTODB4B", label: "Mini Super Estrella (Espora 🌱)" },
+  { address: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG", label: "Farmacia Guadalupe (Maestro 🍄)" },
+  { address: "GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP", label: "Tienda Don Pepe (Experto ⭐)" },
+  { address: "GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57", label: "Mini Super Estrella (Espora 🌱)" },
 ];
 
 export default function ReputationPanel({ apiUrl }: Props) {

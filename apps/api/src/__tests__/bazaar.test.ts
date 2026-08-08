@@ -85,7 +85,7 @@ describe("Bazaar Routes", () => {
     it("should return agent reputation without payment (free endpoint)", async () => {
       const response = await app.inject({
         method: "GET",
-        url: "/api/v1/bazaar/reputation/GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN",
+        url: "/api/v1/bazaar/reputation/GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG",
       });
 
       expect(response.statusCode).toBe(200);

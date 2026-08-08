@@ -220,11 +220,11 @@ export async function upsertAgentHistory(
 export async function seedAgentHistories(): Promise<void> {
   const agents = [
     {
-      address: 'GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN',
+      address: 'GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG',
       broadcasts: 87, swaps_completed: 83, swaps_cancelled: 4, volume_usdc: 241500
     },
     {
-      address: 'GDAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42RBW3K6BTODB4A',
+      address: 'GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP',
       broadcasts: 31, swaps_completed: 28, swaps_cancelled: 3, volume_usdc: 52300
     },
   ];
@@ -243,7 +243,7 @@ export async function seedIntents(): Promise<void> {
   const intents = [
     {
       id: 'int-001',
-      agent_address: 'GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN',
+      agent_address: 'GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG',
       offered_chain: 'ethereum', offered_symbol: 'ETH', offered_amount: '2.5',
       wanted_chain: 'stellar', wanted_symbol: 'USDC', wanted_amount: '7000',
       status: 'active',
@@ -252,7 +252,7 @@ export async function seedIntents(): Promise<void> {
     },
     {
       id: 'int-002',
-      agent_address: 'GDAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42RBW3K6BTODB4A',
+      agent_address: 'GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP',
       offered_chain: 'stellar', offered_symbol: 'USDC', offered_amount: '500',
       wanted_chain: 'physical', wanted_symbol: 'MXN', wanted_amount: '8750',
       status: 'active',

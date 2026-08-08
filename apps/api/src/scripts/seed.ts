@@ -17,7 +17,7 @@ export const DEMO_USER = {
   username: "demo_reviewer",
   // Valid 56-char Stellar public key (deterministic demo keypair)
   stellar_address:
-    "GDEMOREVIEWER1111111111111111111111111111111111111111111111",
+    "GCFIRY65OQE7DFP5KLNS2PF2LVZMUZYJX4OZIEQ36N2IQANUB5XVYOJR",
   password: "MicoPay-Review-2025",
 } as const;
 
@@ -81,7 +81,7 @@ export async function seedDemoData(): Promise<void> {
   `,
     [
       DEMO_MERCHANT_ID,
-      "GDEMO1MERCHANT111111111111111111111111111111111111111111111",
+      "GCATS5YOVB6ROX2WUNKGNQ2MP3GMXDMKSG2O4N5CLX3A6W4PZGZZI55U",
       "Demo Merchant",
       "tienda",
       "Demo Street 1, Demo City",
@@ -239,7 +239,7 @@ async function seedMerchants() {
     {
       id: "MERCH001",
       stellar_address:
-        "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN",
+        "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG",
       name: "Farmacia Guadalupe",
       type: "farmacia",
       address: "Orizaba 45, Col. Roma Norte, CDMX",
@@ -259,7 +259,7 @@ async function seedMerchants() {
     {
       id: "MERCH002",
       stellar_address:
-        "GDAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42RBW3K6BTODB4A",
+        "GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP",
       name: "Tienda Don Pepe",
       type: "tienda",
       address: "Av. Álvaro Obregón 120, Col. Roma Norte, CDMX",
@@ -279,7 +279,7 @@ async function seedMerchants() {
     {
       id: "MERCH003",
       stellar_address:
-        "GCF3CJXADZKIODEGZHTBQKPAGMO5KYVW6SLJ3J5GBQZDIFHGT7ZZQMFB",
+        "GBXHUHG5FGYLPD6RHL2MKWMP572O6KUXCZXDZJXS4T57ZTMAKBN7DWXN",
       name: "Papelería La Central",
       type: "papeleria",
       address: "Col. Condesa, CDMX",
@@ -299,7 +299,7 @@ async function seedMerchants() {
     {
       id: "MERCH004",
       stellar_address:
-        "GDTEZWGQB7V2CLS6GVKWM4B3F5QMT6BJ2UJH7D3O5XFJJJENOTK3YUD5",
+        "GCFIOX77D2ZYIUKXPLGVV7XEAVCWK2G5PSE6BEEGHICVPPD26SPRPPVB",
       name: "Consultorio Dr. Martínez",
       type: "consultorio",
       address: "Col. Del Valle, CDMX",
@@ -319,7 +319,7 @@ async function seedMerchants() {
     {
       id: "MERCH005",
       stellar_address:
-        "GAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42RBW3K6BTODB4B",
+        "GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57",
       name: "Abarrotes El Güero",
       type: "abarrotes",
       address: "Insurgentes Sur 2500, CDMX",
@@ -338,57 +338,33 @@ async function seedMerchants() {
     },
   ];
 
-  await query(`
-    CREATE TABLE IF NOT EXISTS merchants (
-      id                  VARCHAR(32) PRIMARY KEY,
-      stellar_address     VARCHAR(56) NOT NULL UNIQUE,
-      name               VARCHAR(100) NOT NULL,
-      type               VARCHAR(50),
-      address            TEXT,
-      lat                DECIMAL(10, 8),
-      lng                DECIMAL(11, 8),
-      available_mxn      DECIMAL(12, 2) DEFAULT 0,
-      max_trade_mxn      DECIMAL(12, 2) DEFAULT 0,
-      min_trade_mxn      DECIMAL(12, 2) DEFAULT 0,
-      tier               VARCHAR(20) DEFAULT 'espora',
-      completion_rate     DECIMAL(5, 4) DEFAULT 0,
-      trades_completed   INTEGER DEFAULT 0,
-      trades_cancelled   INTEGER DEFAULT 0,
-      volume_usdc        DECIMAL(20, 2) DEFAULT 0,
-      avg_time_minutes   INTEGER DEFAULT 10,
-      online             BOOLEAN DEFAULT false,
-      verified           BOOLEAN DEFAULT false,
-      created_at         TIMESTAMPTZ DEFAULT NOW(),
-      updated_at         TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-
-  await query(
-    `CREATE INDEX IF NOT EXISTS idx_merchants_location ON merchants(lat, lng)`,
-  );
-  await query(
-    `CREATE INDEX IF NOT EXISTS idx_merchants_tier ON merchants(tier)`,
-  );
-  await query(
-    `CREATE INDEX IF NOT EXISTS idx_merchants_online ON merchants(online)`,
-  );
-
+  // La tabla la crea la migración 001, no este script.
+  //
+  // Antes el seed declaraba su PROPIA tabla `merchants` con otras columnas
+  // (`name`, `lat`, `lng`, `id VARCHAR(32)`) mientras la migración declaraba
+  // `display_name`, `latitude`, `longitude`, `id uuid`. Como las dos usaban
+  // CREATE TABLE IF NOT EXISTS, ganaba la primera que corriera y el otro
+  // código quedaba roto en silencio: con la del seed, la ruta de reputación
+  // no encontraba `display_name`; con la de la migración, el seed no
+  // encontraba `lat`. No había orden en el que las dos funcionaran.
+  //
+  // Una sola definición, la de la migración. Ver docs/CAPA_DE_DATOS.md.
   for (const m of merchants) {
     await query(
       `
       INSERT INTO merchants (
-        id, stellar_address, name, type, address, lat, lng,
+        stellar_address, display_name, type, address_text, latitude, longitude,
         available_mxn, max_trade_mxn, min_trade_mxn, tier,
         completion_rate, trades_completed, trades_cancelled, volume_usdc,
-        avg_time_minutes, online
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-      ON CONFLICT (id) DO UPDATE SET
+        avg_time_minutes, online, verification_status, verified_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'verified', NOW())
+      ON CONFLICT (stellar_address) DO UPDATE SET
         available_mxn = EXCLUDED.available_mxn,
         online = EXCLUDED.online,
+        verification_status = 'verified',
         updated_at = NOW()
     `,
       [
-        m.id,
         m.stellar_address,
         m.name,
         m.type,
@@ -421,19 +397,19 @@ async function seedX402Payments() {
   const payments = [
     {
       tx_hash: "abc123def456",
-      payer: "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN",
+      payer: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG",
       amount: "0.005",
       service: "bazaar_broadcast",
     },
     {
       tx_hash: "def456abc789",
-      payer: "GDAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42RBW3K6BTODB4A",
+      payer: "GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP",
       amount: "0.001",
       service: "bazaar_feed",
     },
     {
       tx_hash: "ghi789jkl012",
-      payer: "GCF3CJXADZKIODEGZHTBQKPAGMO5KYVW6SLJ3J5GBQZDIFHGT7ZZQMFB",
+      payer: "GBXHUHG5FGYLPD6RHL2MKWMP572O6KUXCZXDZJXS4T57ZTMAKBN7DWXN",
       amount: "0.01",
       service: "cash_request",
     },
@@ -487,8 +463,8 @@ async function seedSwapHistory() {
   const swaps = [
     {
       swap_id: "SWAP001",
-      initiator: "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN",
-      counterparty: "GDAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42RBW3K6BTODB4A",
+      initiator: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG",
+      counterparty: "GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP",
       offered_chain: "ethereum",
       offered_symbol: "ETH",
       offered_amount: "1.5",
@@ -500,8 +476,8 @@ async function seedSwapHistory() {
     },
     {
       swap_id: "SWAP002",
-      initiator: "GDAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42RBW3K6BTODB4A",
-      counterparty: "GCF3CJXADZKIODEGZHTBQKPAGMO5KYVW6SLJ3J5GBQZDIFHGT7ZZQMFB",
+      initiator: "GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP",
+      counterparty: "GBXHUHG5FGYLPD6RHL2MKWMP572O6KUXCZXDZJXS4T57ZTMAKBN7DWXN",
       offered_chain: "stellar",
       offered_symbol: "USDC",
       offered_amount: "1000",
@@ -513,7 +489,7 @@ async function seedSwapHistory() {
     },
     {
       swap_id: "SWAP003",
-      initiator: "GCF3CJXADZKIODEGZHTBQKPAGMO5KYVW6SLJ3J5GBQZDIFHGT7ZZQMFB",
+      initiator: "GBXHUHG5FGYLPD6RHL2MKWMP572O6KUXCZXDZJXS4T57ZTMAKBN7DWXN",
       offered_chain: "solana",
       offered_symbol: "SOL",
       offered_amount: "50",
@@ -525,8 +501,8 @@ async function seedSwapHistory() {
     },
     {
       swap_id: "SWAP004",
-      initiator: "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN",
-      counterparty: "GDTEZWGQB7V2CLS6GVKWM4B3F5QMT6BJ2UJH7D3O5XFJJJENOTK3YUD5",
+      initiator: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG",
+      counterparty: "GCFIOX77D2ZYIUKXPLGVV7XEAVCWK2G5PSE6BEEGHICVPPD26SPRPPVB",
       offered_chain: "ethereum",
       offered_symbol: "ETH",
       offered_amount: "2.5",

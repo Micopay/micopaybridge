@@ -40,7 +40,7 @@ function fuenteFalsa(porDireccion: Record<string, MerchantReputation>) {
   return source;
 }
 
-const A = "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN";
+const A = "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG";
 const B = "GDKKW2WSMQWZ63PIZBKDDBAAOBG5FP3TUHRYQ4U5RBKTFNESL5K5BJJK";
 
 describe("frontera §M3 — fuente de reputación", () => {

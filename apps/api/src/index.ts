@@ -14,8 +14,11 @@ import { credentialRoutes } from "./routes/credentials.js";
 import { bazaarRoutes } from "./routes/bazaar.js";
 import { agentRoutes } from "./routes/agent.js";
 import { swapRoutes } from "./routes/swaps.js";
+import { cashRoutes } from "./routes/cash.js";
+import { fundRoutes } from "./routes/fund.js";
 import { recoverInFlightSwaps, startRefundRetryLoop } from "./lib/recovery.js";
 import { pendingRefunds } from "./lib/swapStore.js";
+import { runMigrations } from "./db/migrator.js";
 import { config } from "./config.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
@@ -103,10 +106,16 @@ export async function createApp() {
 
   registerRateLimit(app);
 
-  // Las rutas retail (auth, users, cash, fund, cetes, blend, kyc, ramp,
-  // merchants, trade-messages, trades, stellar) se quedaron en
-  // micopay-protocol: su versión viva es micopay/backend. Ver §3.2 del plan
-  // de split.
+  // Las rutas retail (auth, users, cetes, blend, kyc, ramp, merchants,
+  // trade-messages, trades, stellar) se quedaron en micopay-protocol: su
+  // versión viva es micopay/backend. Ver §3.2 del plan de split.
+  //
+  // cash.ts y fund.ts NO son retail, aunque el §3.2 las listaba como tales.
+  // Se comprobó: micopay/backend no tiene ninguna de las dos, así que
+  // borrarlas no las movía de sitio, las eliminaba. Y son superficie de
+  // agentes — /cash/* es el "acceso a efectivo físico" del pitch, y /fund es
+  // el agente pagando al protocolo que acaba de usar. Ver
+  // docs/RUTAS_RECUPERADAS.md.
   //
   // agent.ts y swaps.ts llevaban sin registrar desde el origen: el plan y el
   // ejecutor del swap existían pero no eran alcanzables por HTTP. Se cablean
@@ -115,6 +124,8 @@ export async function createApp() {
   app.register(healthRoutes);
   app.register(agentRoutes);
   app.register(swapRoutes);
+  app.register(cashRoutes);
+  app.register(fundRoutes);
   app.register(reputationRoutes);
   app.register(serviceRoutes);
   app.register(demoRoutes);
@@ -165,8 +176,32 @@ async function arrancarRecuperacion() {
   startRefundRetryLoop(config);
 }
 
+/**
+ * Corre las migraciones al arrancar.
+ *
+ * `runMigrations` existía y no lo llamaba nadie — ni aquí ni en el repo de
+ * origen. El efecto: las tablas nunca se creaban desde la migración, y cada
+ * módulo iba haciéndose las suyas con `CREATE TABLE IF NOT EXISTS`. Acabaron
+ * conviviendo tres definiciones distintas de `merchants` y ninguna ruta podía
+ * funcionar contra la que hubiera creado otro. Ver docs/CAPA_DE_DATOS.md.
+ *
+ * No tumba el arranque si la base no está: esta API funciona sin ella
+ * (x402 cae a memoria), pero el fallo tiene que verse.
+ */
+async function arrancarMigraciones() {
+  try {
+    await runMigrations();
+  } catch (err) {
+    console.error(
+      "[db] las migraciones no corrieron — las rutas con base de datos van a fallar:",
+      err instanceof Error ? err.message : err
+    );
+  }
+}
+
 async function start() {
   const app = await createApp();
+  await arrancarMigraciones();
   await arrancarRecuperacion();
 
   // Log security configuration on startup

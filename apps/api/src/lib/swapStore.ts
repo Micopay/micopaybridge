@@ -110,8 +110,7 @@ export const planStore = new Map<string, SwapPlan>();
  * ni un reinicio ni una segunda instancia pierdan de vista dinero bloqueado.
  * `SWAP_STORE_DIR` vacío lo desactiva (los tests corren así).
  */
-const STORE_DIR = process.env.SWAP_STORE_DIR
-  ?? (process.env.SWAP_STORE_PATH === "" ? "" : "./swap-store");
+const STORE_DIR = process.env.SWAP_STORE_DIR ?? "./swap-store";
 
 /** El status solo avanza. Al fusionar gana el más avanzado. */
 const ORDEN_STATUS: SwapStatus[] = [

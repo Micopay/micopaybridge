@@ -62,11 +62,11 @@ function getAgentTier(completed: number, total: number) {
 
 const memoryAgentHistory = new Map<string, { broadcasts: number; swaps_completed: number; swaps_cancelled: number; volume_usdc: number; first_seen: string; last_active: string }>();
 
-memoryAgentHistory.set("GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN", {
+memoryAgentHistory.set("GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG", {
   broadcasts: 87, swaps_completed: 83, swaps_cancelled: 4, volume_usdc: 241500,
   first_seen: "2025-09-14T10:22:00Z", last_active: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
 });
-memoryAgentHistory.set("GDAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42RBW3K6BTODB4A", {
+memoryAgentHistory.set("GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP", {
   broadcasts: 31, swaps_completed: 28, swaps_cancelled: 3, volume_usdc: 52300,
   first_seen: "2025-11-03T15:45:00Z", last_active: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
 });
@@ -183,12 +183,12 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
           total_swaps_cancelled: 7,
           top_agents: [
             {
-              agent_address: "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN",
+              agent_address: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG",
               broadcasts: 87, swaps_completed: 83, completion_rate: 0.954,
               volume_usdc: 241500, tier: "maestro", tier_emoji: "🍄"
             },
             {
-              agent_address: "GDAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42RBW3K6BTODB4A",
+              agent_address: "GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP",
               broadcasts: 31, swaps_completed: 28, completion_rate: 0.903,
               volume_usdc: 52300, tier: "experto", tier_emoji: "⭐"
             },
@@ -196,7 +196,7 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
           recent_intents: [
             {
               id: "int-001",
-              agent_address: "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN",
+              agent_address: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG",
               offered: { chain: "ethereum", symbol: "ETH", amount: "2.5" },
               wanted: { chain: "stellar", symbol: "USDC", amount: "7000" },
               status: "active",
@@ -208,7 +208,7 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
             },
             {
               id: "int-002",
-              agent_address: "GDAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42RBW3K6BTODB4A",
+              agent_address: "GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP",
               offered: { chain: "stellar", symbol: "USDC", amount: "500" },
               wanted: { chain: "physical", symbol: "MXN", amount: "8750" },
               status: "active",

@@ -37,7 +37,7 @@ export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
           method: "GET",
           price_usdc: "0.0005",
           description: "Verify a merchant's on-chain reputation before sending your user there. Returns tier, completion rate, trade history, and NFT soulbound badge.",
-          example_request: { address: "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN" },
+          example_request: { address: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG" },
           why_pay: "Reputation is the only signal an AI agent has before trusting a stranger with cash. This data is on-chain and cannot be faked.",
         },
         {
@@ -46,7 +46,7 @@ export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
           method: "POST",
           price_usdc: "0.01",
           description: "Initiate a USDC → MXN physical cash exchange with a merchant. Locks USDC in an HTLC on Soroban. Returns QR code for the user.",
-          example_request: { merchant_address: "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN", amount_mxn: 500 },
+          example_request: { merchant_address: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG", amount_mxn: 500 },
           why_pay: "This triggers a real on-chain HTLC lock. The merchant is notified. USDC is secured by contract until the user collects the cash.",
         },
         {
@@ -82,7 +82,7 @@ export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
           method: "GET",
           price_usdc: "0",
           description: "Lookup an AI agent's reputation score derived from Bazaar swap history. Returns tier (Maestro/Experto/Activo/Espora), completion rate, and trust signal.",
-          example_request: { address: "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN" },
+          example_request: { address: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG" },
           why_pay: "Free — use it to filter the intent feed and only respond to trustworthy agents.",
         },
         {

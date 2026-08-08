@@ -62,9 +62,15 @@ function toReputation(row: Record<string, unknown>): MerchantReputation {
   };
 }
 
+// COALESCE porque el esquema canónico guarda la dirección en los dos sitios:
+// `merchants.stellar_address` (comercio dado de alta directamente) y
+// `users.stellar_address` (comercio ligado a una cuenta de usuario). Mirar
+// solo la de `users` devolvía vacío para todo lo que siembra el seed, que
+// llena la de `merchants`.
 const CAMPOS = `
   m.display_name, m.address_text, m.trades_completed, m.completion_rate,
-  m.avg_time_minutes, m.total_volume_usdc, m.verified_at, u.stellar_address
+  m.avg_time_minutes, COALESCE(m.volume_usdc, 0) AS total_volume_usdc,
+  m.verified_at, COALESCE(m.stellar_address, u.stellar_address) AS stellar_address
 `;
 
 /**
@@ -85,8 +91,8 @@ class DirectDbSource implements ReputationSource {
     const res = await query(
       `SELECT ${CAMPOS}
          FROM merchants m
-         JOIN users u ON m.user_id = u.id
-        WHERE u.stellar_address = $1
+         LEFT JOIN users u ON m.user_id = u.id
+        WHERE (m.stellar_address = $1 OR u.stellar_address = $1)
           AND m.verification_status = 'verified'
         LIMIT 1`,
       [stellarAddress]
@@ -98,7 +104,7 @@ class DirectDbSource implements ReputationSource {
     const res = await query(
       `SELECT ${CAMPOS}
          FROM merchants m
-         JOIN users u ON m.user_id = u.id
+         LEFT JOIN users u ON m.user_id = u.id
         WHERE m.verification_status = 'verified'
         ORDER BY m.completion_rate DESC, m.trades_completed DESC`
     );
