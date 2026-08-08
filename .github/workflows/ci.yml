@@ -48,7 +48,15 @@ jobs:
         working-directory: contracts
     steps:
       - uses: actions/checkout@v4
-      # rust-toolchain.toml fija el canal y el target wasm32; rustup lo respeta.
+
+      # Instalar la toolchain explícitamente en vez de confiar en que el runner
+      # la traiga. `ubuntu-latest` hoy incluye Rust, pero eso es superficie
+      # preinstalada que GitHub puede recortar, y un gate que depende de ella
+      # falla el día que cambie sin que nadie haya tocado el repo. Comprobado:
+      # sin este paso el job muere con "cargo: command not found".
+      # rust-toolchain.toml sigue fijando canal y target wasm32.
+      - uses: dtolnay/rust-toolchain@stable
+
       - uses: actions/cache@v4
         with:
           path: |
