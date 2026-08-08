@@ -297,7 +297,17 @@ export async function agentRoutes(fastify: FastifyInstance): Promise<void> {
         };
         validatePlan(planToValidate);
 
-        // Store plan so execute can retrieve it by plan_id
+        // Store plan so execute can retrieve it by plan_id.
+        //
+        // counterparty_address SÍ se guarda: validatePlan() se vuelve a
+        // correr en /execute como "doble check, por si alguien lo llama sin
+        // pasar por aquí" (línea de abajo). Antes este campo no se persistía,
+        // así que esa segunda pasada comparaba undefined contra
+        // DEMO_AGENT_ADDRESS y tiraba "Invalid counterparty_address" en TODA
+        // ejecución — incluida la del botón de la consola (SwapStatus.tsx),
+        // que es exactamente esta ruta HTTP. Nunca se atrapó porque
+        // test:live llama executeAtomicSwapBackground directo, sin pasar
+        // por /plan ni /execute.
         planStore.set(plan.id as string, {
           id:                   plan.id as string,
           sell_asset:           (plan.amounts as any).sell_asset,
@@ -305,6 +315,7 @@ export async function agentRoutes(fastify: FastifyInstance): Promise<void> {
           buy_asset:            (plan.amounts as any).buy_asset,
           buy_amount:           (plan.amounts as any).buy_amount,
           exchange_rate:        (plan.amounts as any).exchange_rate ?? "0",
+          counterparty_address: (plan.counterparty as any).address,
           initiator_ledgers:    (plan.timeouts as any).initiator_ledgers,
           counterparty_ledgers: (plan.timeouts as any).counterparty_ledgers,
           risk_level:           plan.risk_level as string,

@@ -108,7 +108,7 @@ const cashRequests = new Map<string, {
  * `consumed_at` da el marcado de un solo uso: dos escaneos simultáneos no
  * pueden ganar los dos.
  */
-const claimTokens = new Map<string, {
+export const claimTokens = new Map<string, {
   request_id: string;
   expires_at: string;
   consumed_at: string | null;
@@ -260,8 +260,12 @@ export async function cashRoutes(fastify: FastifyInstance): Promise<void> {
       if (!merchantAddress) {
         return reply.status(400).send({ error: "merchant_address is required" });
       }
-      if (amountMxn < 50 || amountMxn > 5000) {
-        return reply.status(400).send({ error: "amount_mxn must be between 50 and 5000" });
+      // `body` es `as`, no un schema: un amount_mxn no numérico (ej. "abc") hace
+      // que `< 50` y `> 5000` den las dos `false` (comparación con NaN), así que
+      // el rango se saltaba entero. Number.isFinite lo cierra — mismo patrón que
+      // ya usa validatePlan() en agent.ts para initiator_ledgers/counterparty_ledgers.
+      if (typeof amountMxn !== "number" || !Number.isFinite(amountMxn) || amountMxn < 50 || amountMxn > 5000) {
+        return reply.status(400).send({ error: "amount_mxn must be a number between 50 and 5000" });
       }
 
       const merchant = MERCHANTS.find((m) => m.stellar_address === merchantAddress);
@@ -456,13 +460,18 @@ export async function cashRoutes(fastify: FastifyInstance): Promise<void> {
     // no hay await entre la lectura y la escritura; con la tabla de
     // micopay/backend el equivalente es el UPDATE con `consumed_at IS NULL`.
     entry.consumed_at = new Date().toISOString();
-    entry.consumed_by = body.merchant_address ?? req.merchant_address;
+    // NUNCA rellenar con req.merchant_address: como el chequeo de arriba es
+    // opcional (mientras no exista auth de comercio, WAVE5 Issue 8), rellenar
+    // con el comercio de la petición hacía que el log atribuyera el canje al
+    // comercio legítimo aunque lo hubiera canjeado cualquier otro portador del
+    // token sin identificarse. Si no lo dijo, no se sabe quién fue.
+    entry.consumed_by = body.merchant_address ?? null;
     claimTokens.set(tokenHash, entry);
 
     cashRequests.set(id, { ...req, status: "completed" });
 
     // El token NO se registra en el log; el preimage tampoco.
-    fastify.log.info(`Claim consumido: ${id} por ${entry.consumed_by}`);
+    fastify.log.info(`Claim consumido: ${id} por ${entry.consumed_by ?? "portador sin identificar (merchant_address no enviado)"}`);
 
     return reply.send({
       request_id: id,

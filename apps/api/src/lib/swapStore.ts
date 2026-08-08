@@ -13,6 +13,7 @@ export interface SwapPlan {
   buy_asset: string;
   buy_amount: string;
   exchange_rate: string;
+  counterparty_address: string;
   initiator_ledgers: number;
   counterparty_ledgers: number;
   risk_level: string;

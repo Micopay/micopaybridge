@@ -12,6 +12,8 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createApp } from "../index.js";
+import { claimTokens } from "../routes/cash.js";
+import { createHash } from "crypto";
 import type { FastifyInstance } from "fastify";
 
 const PAGO = { "x-payment": "mock:GAGENTE:1.0" };
@@ -113,6 +115,40 @@ describe("SEC-02 — el QR no lleva el preimage", () => {
     });
     expect(res.statusCode).toBe(403);
     expect(res.json().error).toBe("MERCHANT_MISMATCH");
+  });
+
+  it("amount_mxn no numérico se rechaza en vez de colarse como NaN", async () => {
+    // "abc" < 50 y "abc" > 5000 dan las dos false (NaN): sin Number.isFinite
+    // esto pasaba con 201 y dejaba amount_usdc:"NaN" en la respuesta.
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/cash/request",
+      headers: { ...PAGO, "content-type": "application/json" },
+      payload: { merchant_address: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG", amount_mxn: "abc" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("el claim sin merchant_address no atribuye el canje al comercio legítimo", async () => {
+    const res0 = await pedirEfectivo();
+    expect(res0.statusCode).toBe(201);
+    const body = res0.json();
+    const token = new URL(body.qr_payload.replace("micopay://", "https://")).searchParams.get("token");
+
+    // Portador sin identificarse: el claim sigue aceptándose (WAVE5 Issue 8,
+    // sin auth de comercio todavía), pero el registro NO debe fingir que fue
+    // el comercio de la petición quien canjeó.
+    const res = await app.inject({
+      method: "POST", url: `/api/v1/cash/request/${body.request_id}/claim`,
+      headers: { "content-type": "application/json" }, payload: { token },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const tokenHash = createHash("sha256").update(token!).digest("hex");
+    const entry = claimTokens.get(tokenHash);
+    // Antes del fix esto era el merchant_address de la petición — atribuía el
+    // canje al comercio legítimo aunque lo hubiera hecho cualquier portador.
+    expect(entry?.consumed_by).toBeNull();
   });
 });
 
