@@ -62,7 +62,12 @@ function getCorsOptions() {
     origin: origins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    // `x-payment` es la cabecera del propio protocolo x402: sin ella en esta
+    // lista el navegador bloquea en el preflight TODA petición pagada, que es
+    // casi toda la API. La consola fallaba con "Failed to fetch" en cada
+    // pestaña y el 204 del preflight hacía parecer que CORS estaba bien.
+    // Se coló al añadir la lista en el arreglo de SEC-21 (10deda5).
+    allowedHeaders: ["Content-Type", "Authorization", "x-payment"],
     maxAge: 86400, // 24 hours
   };
 }

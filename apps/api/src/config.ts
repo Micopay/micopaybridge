@@ -53,7 +53,14 @@ function parseAllowedOrigins(originsEnv: string | undefined, nodeEnv: string | u
   if (!originsEnv) {
     // Development: allow localhost
     if (nodeEnv !== "production") {
-      return ["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"];
+      // 5185 es el puerto real de la consola (apps/web/vite.config.ts). Sin él,
+      // un clon limpio no puede hablar con la API: el navegador bloquea por CORS
+      // y todas las pestañas fallan con "Failed to fetch". 5173 se deja porque es
+      // el puerto por defecto de vite si alguien cambia la config.
+      return [
+        "http://localhost:3000", "http://localhost:5173", "http://localhost:5185",
+        "http://127.0.0.1:3000", "http://127.0.0.1:5173", "http://127.0.0.1:5185",
+      ];
     }
     // Production: empty array means no CORS (must be explicitly configured)
     return [];

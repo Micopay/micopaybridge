@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { query } from "../db/schema.js";
+import { runMigrations } from "../db/migrator.js";
 import { initX402Tables } from "../db/x402.js";
 import {
   initBazaarTables,
@@ -69,18 +70,17 @@ export async function seedDemoData(): Promise<void> {
   await query(
     `
     INSERT INTO merchants (
-      id, stellar_address, name, type, address, lat, lng,
+      stellar_address, display_name, type, address_text, latitude, longitude,
       available_mxn, max_trade_mxn, min_trade_mxn, tier,
       completion_rate, trades_completed, trades_cancelled, volume_usdc,
-      avg_time_minutes, online
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-    ON CONFLICT (id) DO UPDATE SET
+      avg_time_minutes, online, verification_status, verified_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'verified', NOW())
+    ON CONFLICT (stellar_address) DO UPDATE SET
       available_mxn = EXCLUDED.available_mxn,
       online        = EXCLUDED.online,
       updated_at    = NOW()
   `,
     [
-      DEMO_MERCHANT_ID,
       "GCATS5YOVB6ROX2WUNKGNQ2MP3GMXDMKSG2O4N5CLX3A6W4PZGZZI55U",
       "Demo Merchant",
       "tienda",
@@ -570,6 +570,11 @@ async function main() {
 
   try {
     await waitForDatabase();
+
+    // El esquema lo define la migración, no este script. Antes el seed
+    // declaraba su propia tabla `merchants` y competía con la de la
+    // migración; ahora se asegura de que exista la buena antes de escribir.
+    await runMigrations();
 
     console.log("\n🚀 Starting database seed...");
 

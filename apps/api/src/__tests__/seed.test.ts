@@ -70,15 +70,22 @@ describe("seedDemoData — demoMode=true", () => {
     expect(userCall!.params).toContain(DEMO_USER.stellar_address);
   });
 
-  it("upserts the demo merchant with MERCH_DEMO_001", async () => {
+  it("upserta el comercio de demo identificándolo por su dirección Stellar", async () => {
+    // Este test afirmaba que el id era "MERCH_DEMO_001". Eso venía del esquema
+    // que el propio seed se inventaba; en el canónico de la migración `id` es
+    // `uuid DEFAULT gen_random_uuid()` y esa cadena no cabe. La identidad del
+    // comercio es su dirección Stellar, que es única en la tabla y es por lo
+    // que consulta la ruta de reputación.
     await seedDemoData();
 
-    const merchantCall = queryCalls.find(
-      (c) =>
-        c.sql.trim().toUpperCase().startsWith("INSERT INTO MERCHANTS") &&
-        c.params[0] === DEMO_MERCHANT_ID,
+    const merchantCall = queryCalls.find((c) =>
+      c.sql.trim().toUpperCase().startsWith("INSERT INTO MERCHANTS"),
     );
     expect(merchantCall).toBeDefined();
+    expect(merchantCall!.params[0]).toBe(
+      "GCATS5YOVB6ROX2WUNKGNQ2MP3GMXDMKSG2O4N5CLX3A6W4PZGZZI55U",
+    );
+    expect(merchantCall!.sql).toContain("ON CONFLICT (stellar_address)");
   });
 
   it("upserts a trade in each required state: pending, locked, completed, cancelled", async () => {
