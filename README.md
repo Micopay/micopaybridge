@@ -24,15 +24,24 @@ salió por el split de agosto 2026. **Aquí no vive nada del APK ni de la app m�
 
 ### Qué se quedó fuera de `apps/api`
 
-Rutas retail cuya versión viva es `micopay/backend`: `auth`, `users`, `cash`, `fund`,
-`cetes`, `blend`, `kyc`, `ramp`, `merchants`, `trade-messages`, `trades`, `stellar`.
-Con ellas se fueron sus servicios (`etherfuse`, `merchant`, `p2p`, `p2p-registry`,
-`secret`, `trade`), `db/auth.ts`, `middleware/auth.middleware.ts`, `lib/webhook-auth.ts`,
+Rutas retail cuya versión viva es `micopay/backend`: `auth`, `users`, `cetes`, `blend`,
+`kyc`, `ramp`, `merchants`, `trade-messages`, `trades`, `stellar`. Con ellas se fueron
+sus servicios (`etherfuse`, `merchant`, `p2p-registry`, `secret`, `trade`),
+`db/auth.ts`, `middleware/auth.middleware.ts`, `lib/webhook-auth.ts`,
 `lib/trade-auth.ts`, sus tests y la migración `002_etherfuse_ramp.sql`.
 
-`routes/agent.ts` y `routes/swaps.ts` se migran pero **no están registrados** en
-`index.ts` — tampoco lo estaban en el origen. Cablearlos es una decisión de producto,
-no de migración.
+**`cash`, `fund` y `services/p2p.ts` NO están fuera — el §M2 del plan se equivocaba
+para estos tres.** Su justificación era "la versión viva está en `micopay/backend`", y
+ahí no existen: borrarlos no los movía de sitio, los eliminaba. `/cash/*` es el acceso a
+efectivo físico que es el pitch del repo, y `/fund` es el agente pagando al protocolo.
+Recuperados tal cual — `services/p2p.ts` es autocontenido. Detalle en
+[`docs/SEC-02_EN_APPS_API.md`](docs/SEC-02_EN_APPS_API.md).
+
+`routes/agent.ts` y `routes/swaps.ts` **sí están registrados** en `index.ts`. Llevaban
+sin registrar desde el origen — plan y ejecutor existían pero no eran alcanzables por
+HTTP, y el §M4.5 pide el flujo de punta a punta. Es el único cambio de comportamiento
+hecho sin que el plan lo pidiera explícitamente; se revierte borrando dos líneas si el
+equipo prefiere que sigan sin exponerse.
 
 ### Qué se quedó fuera de `apps/web`
 
@@ -242,6 +251,19 @@ que se migró, y conviene saberlo antes de decidir si el demo se puede enseñar:
 
 Nada de esto afectaba a la atomicidad del swap, que es criptográfica, sino a la capa que
 lo coordina.
+
+**`apps/api` traía su propio SEC-02**, separado del que ya se cerró en `micopay/backend`
+el 28 de julio: `cash.ts` migró con el QR llevando el preimage HTLC
+(`micopay://claim?...&secret=<preimage>`), así que quien pagara $0.01 podía liberar el
+escrow sin entregar efectivo. Cerrado con el mismo diseño — token opaco de un solo uso,
+solo se guarda el sha256, TTL 15 min. **No cierra la falta de autenticación de
+comercios**: el canje sigue siendo del portador, que es el WAVE5 Issue 8 que el equipo
+ya tiene abierto en el producto retail — la misma decisión de roles, ahora también
+pendiente aquí. Detalle en [`docs/SEC-02_EN_APPS_API.md`](docs/SEC-02_EN_APPS_API.md).
+
+`fund/demo` mandaba 0.10 USDC reales sin pago ni autenticación, con la llave del demo,
+alcanzable por cualquiera que conociera la URL en un repo público. Ahora detrás de
+`X402_MOCK_MODE` + fuera de producción, con límite de 3/min.
 
 ## Desarrollo
 
