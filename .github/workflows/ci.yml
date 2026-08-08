@@ -1,7 +1,7 @@
 name: CI
 
 # Gate de build desde el primer commit (§M0.4 del plan de split).
-# El repo de origen se rompió antes por no tener gate: aquí los tres pasos
+# El repo de origen se rompió antes por no tener gate: aquí los cuatro pasos
 # son BLOQUEANTES y no llevan continue-on-error. Si algo no compila o un
 # test falla, el merge se para.
 
@@ -68,3 +68,27 @@ jobs:
       # Gate 3 — los contratos que se migran deben pasar sus propios tests.
       - name: cargo test — BLOQUEANTE
         run: cargo test --workspace
+
+  noir:
+    name: Circuitos ZK (nargo test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gate 4 — los tres circuitos Noir migrados (§2.1 del plan) no tenían
+      # gate, y ningún commit los había corrido desde M1.3. `nargo` no se
+      # instala nativamente aquí, igual que Rust en Windows: se usa Docker.
+      #
+      # Imagen fijada a propósito. `aztecprotocol/noir:latest` (nargo 0.29.0)
+      # se probó primero y falla con "Could not resolve 'std' in path" en
+      # TODO uso de std::hash::pedersen_hash — en los tres circuitos por
+      # igual, o sea que es el stdlib de Noir incompleto en esa imagen, no un
+      # bug del código migrado. `aztecprotocol/aztec-nargo` (nargo
+      # 1.0.0-beta.2) sí trae el stdlib completo — 17/17 tests, verificado.
+      - name: nargo test — BLOQUEANTE
+        run: |
+          set -e
+          for d in circuits/access_credential_v1 circuits/poseidon_preimage circuits/reputation_v1; do
+            echo "=== $d ==="
+            docker run --rm -v "$PWD/$d:/w" -w /w aztecprotocol/aztec-nargo:latest test
+          done
