@@ -113,10 +113,30 @@ export async function fundRoutes(fastify: FastifyInstance): Promise<void> {
 
   /**
    * POST /api/v1/fund/demo
-   * Free endpoint — the server's demo agent sends a REAL on-chain USDC payment
-   * to the platform wallet and records it. This IS the meta-demo.
+   *
+   * El agente de demo del servidor manda un pago USDC REAL de 0.10 a la
+   * wallet de la plataforma. Es el meta-demo.
+   *
+   * Iba sin autenticación y sin pago: cualquiera que conociera la URL podía
+   * vaciar la cuenta de demo a base de peticiones, y en un repo público la URL
+   * la conoce cualquiera. Ahora está detrás de la misma puerta que el bypass
+   * `mock:` de x402 —solo con X402_MOCK_MODE y fuera de producción— más un
+   * límite estricto por si acaso.
+   *
+   * No lo llama nadie hoy: la consola usa POST /api/v1/fund, que sí cobra.
    */
-  fastify.post("/api/v1/fund/demo", async (request, reply) => {
+  fastify.post("/api/v1/fund/demo", {
+    config: { rateLimit: { max: 3, timeWindow: "1 minute" } },
+  }, async (request, reply) => {
+    const esDemo =
+      process.env.X402_MOCK_MODE === "true" && process.env.NODE_ENV !== "production";
+    if (!esDemo) {
+      return reply.status(403).send({
+        error: "Demo funding is disabled",
+        hint: "Gasta fondos reales sin cobrar. Usa POST /api/v1/fund, que va detrás de x402.",
+      });
+    }
+
     const secret = process.env.DEMO_AGENT_SECRET_KEY;
     if (!secret) {
       return reply.status(503).send({ error: "Demo agent not configured. Run scripts/setup-demo-agent.mjs first." });

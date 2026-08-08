@@ -21,7 +21,7 @@ export interface MerchantData {
 const MERCHANTS_DATA: MerchantData[] = [
   {
     id: "GM001",
-    stellar_address: "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGKUJI5KOOJ9TXWNTBBS2JN",
+    stellar_address: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG",
     name: "Farmacia Guadalupe",
     type: "farmacia",
     address: "Orizaba 45, Col. Roma Norte, CDMX",
@@ -38,7 +38,7 @@ const MERCHANTS_DATA: MerchantData[] = [
   },
   {
     id: "GM002",
-    stellar_address: "GDAHK7EEG2WWHVKDNT4CEQFZGKF2LGDSW2IVM4S5DP42RBW3K6BTODB4A",
+    stellar_address: "GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP",
     name: "Tienda Don Pepe",
     type: "tienda",
     address: "Av. Álvaro Obregón 120, Col. Roma Norte, CDMX",
@@ -55,7 +55,7 @@ const MERCHANTS_DATA: MerchantData[] = [
   },
   {
     id: "GM003",
-    stellar_address: "GCF3CJXADZKIODEGZHTBQKPAGMO5KYVW6SLJ3J5GBQZDIFHGT7ZZQMFB",
+    stellar_address: "GBXHUHG5FGYLPD6RHL2MKWMP572O6KUXCZXDZJXS4T57ZTMAKBN7DWXN",
     name: "Papelería La Central",
     type: "papeleria",
     address: "Col. Condesa, CDMX",
@@ -72,7 +72,7 @@ const MERCHANTS_DATA: MerchantData[] = [
   },
   {
     id: "GM004",
-    stellar_address: "GDTEZWGQB7V2CLS6GVKWM4B3F5QMT6BJ2UJH7D3O5XFJJJENOTK3YUD5",
+    stellar_address: "GCFIOX77D2ZYIUKXPLGVV7XEAVCWK2G5PSE6BEEGHICVPPD26SPRPPVB",
     name: "Consultorio Dr. Martínez",
     type: "consultorio",
     address: "Col. Del Valle, CDMX",

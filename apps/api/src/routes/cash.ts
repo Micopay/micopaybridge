@@ -91,6 +91,8 @@ const cashRequests = new Map<string, {
   amount_mxn: number;
   amount_usdc: string;
   htlc_secret_hash: string;
+  /** Preimage. NUNCA se devuelve en una respuesta salvo por /claim. */
+  htlc_secret: string;
   htlc_tx_hash: string;
   status: "pending" | "accepted" | "completed" | "expired";
   created_at: string;
@@ -98,6 +100,27 @@ const cashRequests = new Map<string, {
   qr_payload: string;
   payer_address: string;
 }>();
+
+/**
+ * Tokens de canje del QR (SEC-02). Solo se guarda el sha256 del token; el
+ * token en claro vive únicamente dentro del QR que ve el usuario.
+ *
+ * `consumed_at` da el marcado de un solo uso: dos escaneos simultáneos no
+ * pueden ganar los dos.
+ */
+const claimTokens = new Map<string, {
+  request_id: string;
+  expires_at: string;
+  consumed_at: string | null;
+  consumed_by: string | null;
+}>();
+
+/** 15 minutos: el QR se enseña en el mostrador, no se guarda para después. */
+const CLAIM_TOKEN_TTL_MS = 15 * 60 * 1000;
+
+function hashClaimToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
 
 export function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
@@ -257,12 +280,26 @@ export async function cashRoutes(fastify: FastifyInstance): Promise<void> {
       const rate = await getUsdcMxnRate();
       const amountUsdc = parseFloat((amountMxn / rate).toFixed(4));
 
-      // Generate HTLC secret — the QR payload IS the secret preimage
+      // SEC-02 — el preimage HTLC NO sale de aquí.
+      //
+      // Antes el QR llevaba `secret=<preimage>` y la respuesta devolvía ese QR
+      // a quien llamaba. Cualquiera que pagara $0.01 obtenía la preimagen y
+      // podía liberar el escrow directamente contra el contrato SIN entregar
+      // el efectivo, mientras la respuesta afirmaba "USDC releases only when
+      // merchant scans QR".
+      //
+      // El QR lleva ahora un token opaco de un solo uso, del que solo se
+      // guarda el sha256 — mismo principio que `secret_hash`. Es el port del
+      // arreglo que el equipo ya hizo en micopay/backend
+      // (migración 20260728220000_trade_claim_tokens).
       const requestId  = `mcr-${randomUUID().slice(0, 8)}`;
       const secretBytes = randomBytes(32);
       const secret      = secretBytes.toString("hex");
       const secretHash  = createHash("sha256").update(secretBytes).digest("hex");
       const expiresAt   = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+
+      const claimToken     = randomBytes(32).toString("hex");
+      const claimExpiresAt = new Date(Date.now() + CLAIM_TOKEN_TTL_MS).toISOString();
 
       // Lock real USDC in MicopayEscrow on Soroban testnet
       // Cap demo lock at 1 USDC to preserve agent balance across multiple demos
@@ -276,8 +313,9 @@ export async function cashRoutes(fastify: FastifyInstance): Promise<void> {
         htlcTxHash = `demo_htlc_${Date.now()}_${requestId}`;
       }
 
-      // QR payload contains the secret preimage — merchant reveals it to release USDC
-      const qrPayload = `micopay://claim?request_id=${requestId}&secret=${secret}&amount_mxn=${amountMxn}&contract=${ESCROW_CONTRACT_ID}`;
+      // El QR lleva un token opaco. No dice nada que sirva para liberar el
+      // escrow por su cuenta: hay que canjearlo en /claim, y solo una vez.
+      const qrPayload = `micopay://claim?request_id=${requestId}&token=${claimToken}&amount_mxn=${amountMxn}`;
 
       const cashRequest = {
         request_id: requestId,
@@ -286,6 +324,9 @@ export async function cashRoutes(fastify: FastifyInstance): Promise<void> {
         amount_mxn: amountMxn,
         amount_usdc: amountUsdc.toFixed(4),
         htlc_secret_hash: secretHash,
+        // El preimage se queda del lado del servidor y solo sale por /claim,
+        // contra un token válido y sin consumir.
+        htlc_secret: secret,
         htlc_tx_hash: htlcTxHash,
         status: "pending" as const,
         created_at: new Date().toISOString(),
@@ -295,6 +336,14 @@ export async function cashRoutes(fastify: FastifyInstance): Promise<void> {
       };
 
       cashRequests.set(requestId, cashRequest);
+      // Del token solo se guarda el hash: el token en claro no se persiste
+      // en ningún sitio, igual que en micopay/backend.
+      claimTokens.set(hashClaimToken(claimToken), {
+        request_id: requestId,
+        expires_at: claimExpiresAt,
+        consumed_at: null,
+        consumed_by: null,
+      });
 
       fastify.log.info(
         `Cash request ${requestId}: ${request.payerAddress} → ${merchant.name} $${amountMxn} MXN`
@@ -360,6 +409,71 @@ export async function cashRoutes(fastify: FastifyInstance): Promise<void> {
       amount_usdc: req.amount_usdc,
       htlc_tx_hash: req.htlc_tx_hash,
       expires_at: req.expires_at,
+    });
+  });
+
+  /**
+   * POST /api/v1/cash/request/:id/claim
+   *
+   * El comercio canjea el token del QR y recibe el preimage para liberar el
+   * escrow. Es la otra mitad del arreglo de SEC-02: el secreto ya no viaja en
+   * el QR, se entrega aquí contra un token válido, vigente y sin consumir.
+   *
+   * Sin x402 a propósito: cobrarle al comercio por cobrar sería absurdo.
+   */
+  fastify.post("/api/v1/cash/request/:id/claim", {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { token?: string; merchant_address?: string };
+
+    if (!body.token) {
+      return reply.status(400).send({ error: "token requerido", hint: "viene en el QR" });
+    }
+
+    const req = cashRequests.get(id);
+    if (!req) return reply.status(404).send({ error: "Request not found" });
+
+    const tokenHash = hashClaimToken(body.token);
+    const entry = claimTokens.get(tokenHash);
+
+    // Se comprueba también que el token sea DE ESTA petición: si no, un token
+    // válido de otra serviría para cobrar aquí.
+    if (!entry || entry.request_id !== id) {
+      return reply.status(404).send({ error: "INVALID_CLAIM_TOKEN", detail: "Este QR no es válido para esta operación" });
+    }
+    if (entry.consumed_at !== null) {
+      return reply.status(409).send({ error: "CLAIM_TOKEN_USED", detail: "Este QR ya fue usado", consumed_at: entry.consumed_at });
+    }
+    if (new Date(entry.expires_at) < new Date()) {
+      return reply.status(410).send({ error: "CLAIM_TOKEN_EXPIRED", detail: "Este QR expiró. Pide uno nuevo" });
+    }
+    if (body.merchant_address && body.merchant_address !== req.merchant_address) {
+      return reply.status(403).send({ error: "MERCHANT_MISMATCH", detail: "Este QR es para otro comercio" });
+    }
+
+    // Marcado de un solo uso. En un solo proceso Node esto es atómico porque
+    // no hay await entre la lectura y la escritura; con la tabla de
+    // micopay/backend el equivalente es el UPDATE con `consumed_at IS NULL`.
+    entry.consumed_at = new Date().toISOString();
+    entry.consumed_by = body.merchant_address ?? req.merchant_address;
+    claimTokens.set(tokenHash, entry);
+
+    cashRequests.set(id, { ...req, status: "completed" });
+
+    // El token NO se registra en el log; el preimage tampoco.
+    fastify.log.info(`Claim consumido: ${id} por ${entry.consumed_by}`);
+
+    return reply.send({
+      request_id: id,
+      status: "completed",
+      merchant_name: req.merchant_name,
+      amount_mxn: req.amount_mxn,
+      amount_usdc: req.amount_usdc,
+      htlc_secret: req.htlc_secret,
+      htlc_secret_hash: req.htlc_secret_hash,
+      contract: ESCROW_CONTRACT_ID,
+      note: "Usa htlc_secret para liberar el escrow. Este token ya no sirve otra vez.",
     });
   });
 }
