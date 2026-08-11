@@ -13,6 +13,12 @@ import {
 const MODEL = process.env.INFERENCE_MODEL ?? "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 1024;
 
+// Dev/demo escape hatch: swap the resource for a free Ollama Cloud model
+// (no local GPU needed — runs on ollama.com) so frontend flows/demo videos
+// don't burn ANTHROPIC_API_KEY credits. Prod stays on Anthropic.
+const PROVIDER = process.env.INFERENCE_PROVIDER ?? "anthropic";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "gpt-oss:20b-cloud";
+
 interface InferenceBody {
   circuit_id?: string; // defaults to access_credential_v1
   proof: string; // base64-encoded UltraHonk proof
@@ -79,7 +85,13 @@ export async function inferenceRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       // 2. Resource availability (the model gateway)
-      if (!process.env.ANTHROPIC_API_KEY) {
+      if (PROVIDER === "ollama") {
+        if (!process.env.OLLAMA_API_KEY) {
+          return reply
+            .status(503)
+            .send({ error: "Inference not configured — OLLAMA_API_KEY missing" });
+        }
+      } else if (!process.env.ANTHROPIC_API_KEY) {
         return reply
           .status(503)
           .send({ error: "Inference not configured — ANTHROPIC_API_KEY missing" });
@@ -138,8 +150,33 @@ export async function inferenceRoutes(fastify: FastifyInstance): Promise<void> {
           .send({ error: "Invalid credential — proof did not verify" });
       }
 
-      // 5. Credential valid + freshly burned → serve the resource (Claude).
+      // 5. Credential valid + freshly burned → serve the resource.
       try {
+        if (PROVIDER === "ollama") {
+          const res = await fetch("https://ollama.com/api/chat", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${process.env.OLLAMA_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: OLLAMA_MODEL,
+              messages: [{ role: "user", content: prompt }],
+              stream: false,
+            }),
+          });
+          if (!res.ok) {
+            throw new Error(`Ollama Cloud request failed: ${res.status} ${await res.text()}`);
+          }
+          const data = (await res.json()) as { message?: { content?: string } };
+          return reply.send({
+            completion: data.message?.content ?? "",
+            model: OLLAMA_MODEL,
+            credential_spent: true,
+            verify_tx_hash: verifyTxHash,
+          });
+        }
+
         const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
         const msg = await anthropic.messages.create({
           model: MODEL,

@@ -14,6 +14,11 @@ const ALLOWED_ASSETS = new Set(["USDC", "XLM", "MXNe", "XRP"]);
 const MAX_AMOUNT_USD = 100; // Maximum amount per swap (USD)
 const DEMO_AGENT_ADDRESS = process.env.DEMO_AGENT_PUBLIC_KEY ?? "GDEMOAGENTADDRESSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"; // Placeholder, should be set in env
 
+// Same dev/demo escape hatch as routes/inference.ts: free Ollama Cloud model,
+// no local GPU, no ANTHROPIC_API_KEY spend.
+const PROVIDER = process.env.INFERENCE_PROVIDER ?? "anthropic";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "gpt-oss:20b-cloud";
+
 const SYSTEM_PROMPT = `
 Eres el agente de atomic swaps de Micopay Protocol.
 
@@ -105,6 +110,13 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
+// Ollama Cloud's /api/chat wants OpenAI-style {type, function} tool defs,
+// not Anthropic's {name, input_schema}.
+const OLLAMA_TOOLS = TOOLS.map((t) => ({
+  type: "function" as const,
+  function: { name: t.name, description: t.description, parameters: t.input_schema },
+}));
+
 async function executeTool(
   name: string,
   input: Record<string, unknown>,
@@ -171,7 +183,7 @@ function validatePlan(plan: any): void {
 
   // Validate counterparty address (in demo mode, should match expected counterparty)
   if (DEMO_AGENT_ADDRESS && plan.counterparty_address !== DEMO_AGENT_ADDRESS) {
-    throw new Error(`Invalid counterparty_address`);
+    throw new Error(`Invalid counterparty_address: got "${plan.counterparty_address}", expected "${DEMO_AGENT_ADDRESS}"`);
   }
 
   // Los timeouts los propone el LLM. Hasta ahora la regla 2x vivía SOLO en el
@@ -197,11 +209,11 @@ function validatePlan(plan: any): void {
   }
 }
 
-async function planSwap(
+async function getFinalPlanAnthropic(
   intent: string,
   userAddress: string,
   apiBase: string
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, unknown> | null> {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const messages: Anthropic.MessageParam[] = [
     {
@@ -243,6 +255,83 @@ async function planSwap(
     break;
   }
 
+  return finalPlan;
+}
+
+interface OllamaToolCall {
+  id?: string;
+  function: { name: string; arguments: Record<string, unknown> };
+}
+interface OllamaMessage {
+  role: string;
+  content: string;
+  tool_calls?: OllamaToolCall[];
+}
+
+// Free model, less predictable than Claude at converging on create_swap_plan —
+// cap turns so a wandering conversation can't loop forever burning the free quota.
+const OLLAMA_MAX_TURNS = 6;
+
+async function getFinalPlanOllama(
+  intent: string,
+  userAddress: string,
+  apiBase: string
+): Promise<Record<string, unknown> | null> {
+  const messages: OllamaMessage[] = [
+    {
+      role: "user",
+      content: `Usuario: ${intent}\nStellar address: ${userAddress}\n\nAnaliza la intención y genera un SwapPlan ejecutable.`,
+    },
+  ];
+
+  let finalPlan: Record<string, unknown> | null = null;
+
+  for (let turn = 0; turn < OLLAMA_MAX_TURNS; turn++) {
+    const res = await fetch("https://ollama.com/api/chat", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OLLAMA_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        stream: false,
+        messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
+        tools: OLLAMA_TOOLS,
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`Ollama Cloud request failed: ${res.status} ${await res.text()}`);
+    }
+    const data = (await res.json()) as { message: OllamaMessage };
+    const message = data.message;
+    messages.push(message);
+
+    if (!message.tool_calls || message.tool_calls.length === 0) break;
+
+    for (const call of message.tool_calls) {
+      if (call.function.name === "create_swap_plan") {
+        finalPlan = call.function.arguments;
+      }
+      const result = await executeTool(call.function.name, call.function.arguments, apiBase);
+      messages.push({ role: "tool", content: result });
+    }
+    if (finalPlan) break;
+  }
+
+  return finalPlan;
+}
+
+async function planSwap(
+  intent: string,
+  userAddress: string,
+  apiBase: string
+): Promise<Record<string, unknown>> {
+  const finalPlan =
+    PROVIDER === "ollama"
+      ? await getFinalPlanOllama(intent, userAddress, apiBase)
+      : await getFinalPlanAnthropic(intent, userAddress, apiBase);
+
   if (!finalPlan) throw new Error("Agent did not produce a swap plan");
 
   const initiator = Math.max(Number(finalPlan.initiator_ledgers ?? 240), Number(finalPlan.counterparty_ledgers ?? 120) * 2);
@@ -280,7 +369,11 @@ export async function agentRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(400).send({ error: "intent is required" });
       }
 
-      if (!process.env.ANTHROPIC_API_KEY) {
+      if (PROVIDER === "ollama") {
+        if (!process.env.OLLAMA_API_KEY) {
+          return reply.status(503).send({ error: "Agent not configured — OLLAMA_API_KEY missing" });
+        }
+      } else if (!process.env.ANTHROPIC_API_KEY) {
         return reply.status(503).send({ error: "Agent not configured — ANTHROPIC_API_KEY missing" });
       }
 
@@ -294,6 +387,8 @@ export async function agentRoutes(fastify: FastifyInstance): Promise<void> {
           buy_asset: (plan.amounts as any).buy_asset,
           buy_amount: (plan.amounts as any).buy_amount,
           counterparty_address: (plan.counterparty as any).address,
+          initiator_ledgers: (plan.timeouts as any).initiator_ledgers,
+          counterparty_ledgers: (plan.timeouts as any).counterparty_ledgers,
         };
         validatePlan(planToValidate);
 
@@ -323,7 +418,11 @@ export async function agentRoutes(fastify: FastifyInstance): Promise<void> {
           created_at:           new Date().toISOString(),
         });
 
-        return reply.send({ plan, payer: request.payerAddress, agent: "claude-haiku-4-5" });
+        return reply.send({
+          plan,
+          payer: request.payerAddress,
+          agent: PROVIDER === "ollama" ? OLLAMA_MODEL : "claude-haiku-4-5",
+        });
       } catch (err) {
         fastify.log.error(err);
         return reply.status(500).send({ error: "Agent failed", detail: String(err) });

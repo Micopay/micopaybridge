@@ -108,24 +108,22 @@ async function fetchRateFromHorizon(sell: string, buy: string): Promise<number> 
   }
 }
 
+// La misma dirección demo que routes/agent.ts exige en validatePlan
+// (DEMO_AGENT_PUBLIC_KEY) — antes esto devolvía direcciones inventadas
+// ("GDEMOSWAP1XXX...") que nunca podían coincidir, así que /swaps/execute
+// rechazaba cualquier plan real con "Invalid counterparty_address".
+const DEMO_AGENT_ADDRESS = process.env.DEMO_AGENT_PUBLIC_KEY ?? "GDEMOAGENTADDRESSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+
 async function buildCounterparties(sell: string, buy: string, amount?: string): Promise<CounterpartyInfo[]> {
   const baseRate = await fetchRateFromHorizon(sell, buy);
   return [
     {
-      address: "GDEMOSWAP1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      address: DEMO_AGENT_ADDRESS,
       chain: "stellar",
       completion_rate: 0.98,
       avg_time_seconds: 45,
       available_amount: "10000",
       rate: (baseRate * 0.999).toFixed(4), // best rate (0.1% spread)
-    },
-    {
-      address: "GDEMOSWAP2XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-      chain: "stellar",
-      completion_rate: 0.94,
-      avg_time_seconds: 62,
-      available_amount: "5000",
-      rate: (baseRate * 0.995).toFixed(4), // slightly worse
     },
   ].filter((c) => !amount || parseFloat(c.available_amount) >= parseFloat(amount));
 }
