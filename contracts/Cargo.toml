@@ -1,0 +1,35 @@
+[workspace]
+# Workspace sembrado en M0 (§M0.3 del plan). Cargo.lock y rust-toolchain.toml
+# van copiados tal cual del origen para no mover versiones.
+#
+# micopay-escrow es el del servicio x402, NO el del móvil: ese se queda en
+# micopay/contracts/escrow y está desplegado en CB4M5777…ALO3HZ. Divergieron
+# en abril y no son intercambiables (§1.2 del plan).
+#
+# Falta micopay-badges: sin decidir en §2.3 del plan. No se arrastra hasta
+# que Eric confirme si está vivo — no aparece en render.yaml ni en .env.example.
+#
+# OJO al compilar a wasm: el workspace mezcla dos mayores de soroban-sdk.
+# htlc-core, atomic-swap y micopay-escrow van en 21.7.6 y compilan contra
+# `wasm32-unknown-unknown`; zk-verifier va en 26.0.1, que rechaza ese target
+# y exige `wasm32v1-none` (Rust 1.84+). No hay un solo `--target` que sirva
+# para todo el workspace: hay que construir por paquete. `cargo test` no se
+# ve afectado porque corre nativo. Viene así del origen; unificar las
+# versiones sería un refactor y M1 no es el momento (§7 del plan).
+members = [
+    "htlc-core",
+    "atomic-swap",
+    "micopay-escrow",
+    "zk-verifier",
+]
+resolver = "2"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true

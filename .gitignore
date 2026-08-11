@@ -1,0 +1,21 @@
+node_modules/
+.env
+.env.*
+*.log
+relay-state.json
+relay-state.json.tmp
+swap-store/
+.turbo/
+target/
+dist/
+*.tsbuildinfo
+
+# Salida de tsc junto a la fuente. El `main` de cada paquete apunta a dist/,
+# así que estos .js/.d.ts en src/ nunca se consumían: solo ensuciaban el diff
+# y arriesgaban que un import resolviera al compilado viejo en vez del .ts.
+# No afecta a packages/xrpl-bridge, cuyos .js y .d.ts en la raíz del paquete
+# SON la fuente (JS a mano + tipos a mano, ver dts-drift.test.js).
+packages/*/src/*.js
+packages/*/src/*.js.map
+packages/*/src/*.d.ts
+packages/*/src/*.d.ts.map

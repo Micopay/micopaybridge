@@ -1,0 +1,8 @@
+secret = "1001"
+tier = "3"
+path_elements = ["0x0","0x0","0x0","0x0","0x0","0x0","0x0","0x0","0x0","0x0","0x0","0x0","0x0","0x0","0x0","0x0","0x0","0x0","0x0","0x0"]
+path_index = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+merkle_root = "0x079fa7cd6ecb9dc5b48eedf99357995c04771a815c19072ac63b0f1265868bd5"
+tier_threshold = "2"
+context = "42"
+nullifier = "0x1b7d99efaf246eb3489deefcff6b29541e57fbc7c048da3713b00df3e84eccc2"

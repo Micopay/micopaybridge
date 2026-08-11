@@ -1,0 +1,52 @@
+{
+  "name": "@micopay/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:live": "tsx src/scripts/live-swap.ts",
+    "test:recovery": "tsx src/scripts/live-recovery.ts",
+    "test:concurrency": "tsx src/scripts/concurrency-check.ts",
+    "seed": "tsx src/scripts/seed.ts",
+    "db:setup": "npm run seed",
+    "db:reset": "npx tsx -e \"import('./src/db/schema.js').then(m => m.query('DROP TABLE IF EXISTS merchants, swap_history, bazaar_quotes, bazaar_intents, agent_history, x402_payments CASCADE'))\"",
+    "rep:build-tree": "tsx src/cli/rep-engine.ts build-tree",
+    "rep:publish-root": "tsx src/cli/rep-engine.ts publish-root",
+    "rep:nullifier": "tsx src/cli/rep-engine.ts nullifier",
+    "deploy:zk": "tsx src/cli/deploy-zk.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.86.1",
+    "@fastify/cors": "^8.5.0",
+    "@fastify/helmet": "^11.1.1",
+    "@fastify/jwt": "^8.0.1",
+    "@fastify/rate-limit": "^9.1.0",
+    "@fastify/swagger": "6",
+    "@fastify/swagger-ui": "2",
+    "@micopay/sdk": "*",
+    "@micopay/types": "*",
+    "@micopaybridge/xrpl-bridge": "*",
+    "@stellar/stellar-sdk": "^16.0.1",
+    "xrpl": "^5.0.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.6",
+    "bcryptjs": "^3.0.3",
+    "canonicalize": "^3.0.0",
+    "fastify": "^4.28.1",
+    "pg": "^8.13.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.3",
+    "viem": "^2.54.1"
+  },
+  "devDependencies": {
+    "fast-check": "^4.8.0",
+    "pino-pretty": "^13.0.0",
+    "vitest": "^4.1.8"
+  }
+}

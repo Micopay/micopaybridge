@@ -1,0 +1,29 @@
+{
+  "name": "@micopaybridge/xrpl-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pierna XRPL del atomic swap HTLC: traducción cripto/tiempo, relay de dos ledgers y suite de fallos.",
+  "main": "relay.js",
+  "exports": {
+    "./bridge-translate": {
+      "types": "./bridge-translate.d.ts",
+      "default": "./bridge-translate.js"
+    },
+    "./relay": {
+      "types": "./relay.d.ts",
+      "default": "./relay.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node bridge-translate.test.js && node relay-state.test.js && node dts-drift.test.js",
+    "test:live": "node failure_suite.js"
+  },
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "@stellar/stellar-sdk": "^16.0.1",
+    "five-bells-condition": "^5.0.1",
+    "xrpl": "^5.0.0"
+  }
+}

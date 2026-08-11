@@ -1,0 +1,63 @@
+{
+  // Este paquete es JavaScript a mano, no TypeScript compilado — por eso no
+  // extiende tsconfig.base.json (que asume NodeNext/ESM y emite a dist/).
+  // Aun así tiene que pasar por el Gate 1: era el único workspace fuera del
+  // typecheck, y es justo el que mueve dinero entre dos cadenas.
+  //
+  // `checkJs` verifica los .js contra su JSDoc y contra los .d.ts escritos a
+  // mano, así que cierra desde dentro el hueco que `dts-drift.test.js` vigila
+  // desde fuera: si un .d.ts deja de describir su .js, ahora falla el gate.
+  // (Ya encontró uno: SorobanWatcher.server existía en relay.js y no estaba
+  // declarado en relay.d.ts.)
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "lib": ["ES2022"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    // `strict` fuera a propósito: activarlo sobre JS ya escrito produce ruido
+    // de nulabilidad que no es lo que este gate busca atrapar. Lo que sí
+    // atrapa: llamadas mal formadas, propiedades inexistentes y drift .js/.d.ts.
+    "strict": false,
+    "skipLibCheck": true
+  },
+
+  // Lo que el paquete exporta, más los tests que corren en CI.
+  "include": [
+    "bridge-translate.js",
+    "bridge-translate.d.ts",
+    "relay.js",
+    "relay.d.ts",
+    "bridge-translate.test.js",
+    "relay-state.test.js",
+    "dts-drift.test.js"
+  ],
+
+  // FUERA POR AHORA, y conviene saber por qué antes de darlo por bueno:
+  // agent_a/agent_b, demo_full_swap, escrow_demo, failure_suite,
+  // relay_test_live y test_token_escrow son guiones contra testnet en vivo,
+  // no código que se importe. Acumulan ~48 errores, casi todos del mismo par
+  // de patrones de tipado de `xrpl`: leer `meta.TransactionResult` sin
+  // estrechar `string | TransactionMetadataBase`, y leer `.Sequence` de un
+  // objeto de transacción antes del autofill. Ninguno es un fallo en tiempo de
+  // ejecución, pero tampoco están verificados.
+  //
+  // Se dejan fuera para no mezclar un refactor con la migración (§7 del plan).
+  // TODO: incorporarlos al gate en un PR aparte, estrechando `meta` y tipando
+  // el objeto de tx tras autofill.
+  "exclude": [
+    "node_modules",
+    "agent_a.js",
+    "agent_b.js",
+    "demo_full_swap.js",
+    "escrow_demo.js",
+    "failure_suite.js",
+    "relay_test_live.js",
+    "test_token_escrow.js"
+  ]
+}

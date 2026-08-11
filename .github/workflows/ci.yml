@@ -1,0 +1,94 @@
+name: CI
+
+# Gate de build desde el primer commit (§M0.4 del plan de split).
+# El repo de origen se rompió antes por no tener gate: aquí los cuatro pasos
+# son BLOQUEANTES y no llevan continue-on-error. Si algo no compila o un
+# test falla, el merge se para.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: Typecheck + tests (workspaces npm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # Gate 1 — tipos. Cada workspace con TypeScript declara su propio
+      # script `typecheck` (tsc --noEmit); turbo los corre todos. Un
+      # workspace de TS que no lo declare se está saltando el gate: revisarlo
+      # en la revisión de código, no aquí.
+      - name: Typecheck — BLOQUEANTE
+        run: npm run typecheck
+
+      # Gate 2 — tests de los workspaces. Solo los que corren offline; la
+      # suite contra testnets reales es `npm run test:live` y no va en CI
+      # porque necesita identidades fondeadas.
+      - name: Tests — BLOQUEANTE
+        run: npm test
+
+  rust:
+    name: Contratos Soroban (cargo test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+
+      # Instalar la toolchain explícitamente en vez de confiar en que el runner
+      # la traiga. `ubuntu-latest` hoy incluye Rust, pero eso es superficie
+      # preinstalada que GitHub puede recortar, y un gate que depende de ella
+      # falla el día que cambie sin que nadie haya tocado el repo. Comprobado:
+      # sin este paso el job muere con "cargo: command not found".
+      # rust-toolchain.toml sigue fijando canal y target wasm32.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: cargo-${{ hashFiles('contracts/Cargo.lock') }}
+
+      # Gate 3 — los contratos que se migran deben pasar sus propios tests.
+      - name: cargo test — BLOQUEANTE
+        run: cargo test --workspace
+
+  noir:
+    name: Circuitos ZK (nargo test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gate 4 — los tres circuitos Noir migrados (§2.1 del plan) no tenían
+      # gate, y ningún commit los había corrido desde M1.3. `nargo` no se
+      # instala nativamente aquí, igual que Rust en Windows: se usa Docker.
+      #
+      # Imagen fijada a propósito. `aztecprotocol/noir:latest` (nargo 0.29.0)
+      # se probó primero y falla con "Could not resolve 'std' in path" en
+      # TODO uso de std::hash::pedersen_hash — en los tres circuitos por
+      # igual, o sea que es el stdlib de Noir incompleto en esa imagen, no un
+      # bug del código migrado. `aztecprotocol/aztec-nargo` (nargo
+      # 1.0.0-beta.2) sí trae el stdlib completo — 17/17 tests, verificado.
+      - name: nargo test — BLOQUEANTE
+        run: |
+          set -e
+          for d in circuits/access_credential_v1 circuits/poseidon_preimage circuits/reputation_v1; do
+            echo "=== $d ==="
+            docker run --rm -v "$PWD/$d:/w" -w /w aztecprotocol/aztec-nargo:latest test
+          done

@@ -1,0 +1,22 @@
+{
+  "name": "@micopay/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc && node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@micopay/types": "*",
+    "@stellar/stellar-sdk": "^16.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "*"
+  }
+}
