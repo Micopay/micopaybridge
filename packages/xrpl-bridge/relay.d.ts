@@ -57,6 +57,12 @@ export declare class SorobanWatcher {
   });
   cursor: string | null;
   startLedger: number | null;
+  /**
+   * Cliente RPC de Soroban. Se expone a propósito: es la costura por la que
+   * los tests lo sustituyen por un doble (ver relay-state.test.js), y estaba
+   * en la implementación sin declararse aquí.
+   */
+  server: any;
   start(): Promise<void>;
   tick(): Promise<void>;
   poll(): Promise<void>;

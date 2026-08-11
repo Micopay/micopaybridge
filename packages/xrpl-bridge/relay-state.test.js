@@ -144,7 +144,8 @@ async function main() {
     const statePath = tmpState();
     const p = bt.generatePreimage();
     let entregas = 0;
-    let soltar;
+    /** @type {(value?: unknown) => void} */
+    let soltar = () => {};
     const bloqueo = new Promise((r) => (soltar = r));
 
     const w = watcherConDoble({
