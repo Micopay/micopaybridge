@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-
-const BASE_URL =
-  (import.meta as any).env?.VITE_API_URL ?? "http://localhost:3000";
+import { API_URL } from "../config";
 
 export interface DemoStatus {
   isDemoMode: boolean;
@@ -15,7 +13,15 @@ export function useDemoStatus(): DemoStatus {
   useEffect(() => {
     let cancelled = false;
 
-    fetch(`${BASE_URL}/api/v1/demo/status`)
+    // Sin API configurada no hay a quién preguntar. Salir aquí evita una
+    // petición a una URL inventada y deja `loading` en false, que es la
+    // verdad: no está cargando, es que no hay nada que cargar.
+    if (!API_URL) {
+      setLoading(false);
+      return;
+    }
+
+    fetch(`${API_URL}/api/v1/demo/status`)
       .then((res) => res.json())
       .then((data: unknown) => {
         if (cancelled) return;

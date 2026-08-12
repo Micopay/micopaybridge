@@ -9,8 +9,7 @@ import BazaarFeed from "./components/BazaarFeed";
 import DemoBanner from "./components/DemoBanner";
 import { useDemoStatus } from "./hooks/useDemoStatus";
 
-const API_URL =
-  (import.meta as any).env?.VITE_API_URL ?? "http://localhost:3000";
+import { API_URL, APP_URL } from "./config";
 
 type Tab = "demo" | "swap" | "zk" | "bazaar" | "reputation" | "fund" | "services";
 
@@ -19,9 +18,64 @@ type Tab = "demo" | "swap" | "zk" | "bazaar" | "reputation" | "fund" | "services
 // whole pitch is agents talk to the API directly, no account, no API key.
 // (The login screen this used to show was copied from the mobile app's
 // App Store review flow, where it does make sense — it doesn't here.)
+/**
+ * Se muestra cuando el build salió sin `VITE_API_URL`. Dice qué falta y cómo
+ * arreglarlo, en vez de dejar siete pestañas que fallan sin explicación.
+ */
+function ApiNoConfigurada() {
+  return (
+    <div
+      className="min-h-screen bg-gray-950 text-gray-100"
+      style={{
+        fontFamily: "monospace",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1.5rem",
+      }}
+    >
+      <div style={{ maxWidth: "34rem" }}>
+        <p style={{ fontSize: "0.72rem", letterSpacing: "0.14em", color: "#f59e0b", margin: 0 }}>
+          CONSOLA SIN API
+        </p>
+        <h1 style={{ fontSize: "1.35rem", margin: "0.6rem 0 0.9rem", lineHeight: 1.3 }}>
+          Esta consola no tiene backend al que llamar
+        </h1>
+        <p style={{ fontSize: "0.85rem", lineHeight: 1.7, color: "#9ca3af", margin: "0 0 0.9rem" }}>
+          Se compiló sin <code style={{ color: "#e5e7eb" }}>VITE_API_URL</code>, así que no hay
+          ninguna dirección a la que pedir datos. Los paneles de demo, swap, bazaar y reputación
+          dependen todos de la API del bridge (<code style={{ color: "#e5e7eb" }}>apps/api</code>).
+        </p>
+        <p style={{ fontSize: "0.85rem", lineHeight: 1.7, color: "#9ca3af", margin: "0 0 1.2rem" }}>
+          No es un fallo de red ni algo que se arregle recargando: hay que volver a compilar
+          indicando la URL.
+        </p>
+        <pre
+          style={{
+            background: "#111827",
+            border: "1px solid #1f2937",
+            borderRadius: "6px",
+            padding: "0.85rem",
+            fontSize: "0.75rem",
+            color: "#a7f3d0",
+            overflowX: "auto",
+            margin: 0,
+          }}
+        >
+{`VITE_API_URL=https://<api-del-bridge> npm run deploy`}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("demo");
   const { isDemoMode } = useDemoStatus();
+
+  // Sin API no hay nada que enseñar: cada panel de abajo vive de llamarla. Más
+  // vale decirlo que pintar siete pestañas que fallan en silencio.
+  if (!API_URL) return <ApiNoConfigurada />;
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "demo", label: "⚡ Demo" },
@@ -95,21 +149,23 @@ export default function App() {
             >
               📊 Presentación
             </a>
-            <a
-              href="http://localhost:5181"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                fontSize: "0.72rem",
-                color: "#4ade80",
-                textDecoration: "none",
-                border: "1px solid #16a34a",
-                borderRadius: "5px",
-                padding: "0.25rem 0.6rem",
-              }}
-            >
-              📱 App MicoPay
-            </a>
+            {APP_URL && (
+              <a
+                href={APP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  fontSize: "0.72rem",
+                  color: "#4ade80",
+                  textDecoration: "none",
+                  border: "1px solid #16a34a",
+                  borderRadius: "5px",
+                  padding: "0.25rem 0.6rem",
+                }}
+              >
+                📱 App MicoPay
+              </a>
+            )}
           </div>
           <div
             style={{
