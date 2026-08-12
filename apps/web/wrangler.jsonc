@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "micopay-bridge",
+  "compatibility_date": "2026-08-11",
+
+  // Worker solo de assets: no hay `main`, no corre código nuestro. La consola
+  // del demo es estática y habla con la API por fetch desde el navegador.
+  "assets": {
+    "directory": "dist",
+    // Una sola vista, sin router: cualquier ruta bajo el prefijo devuelve el
+    // index en vez de un 404.
+    "not_found_handling": "single-page-application"
+  },
+
+  // El ápex y www los sirve el Worker `micopay-web` (repo micopay-landig) con
+  // custom_domain. Aquí NO se usa custom_domain a propósito: reclamaría el
+  // hostname entero y desplazaría a la landing. Con rutas por prefijo, este
+  // Worker solo ve /bridge y /bridge/*; todo lo demás sigue yendo a la landing.
+  //
+  // Los dos patrones son necesarios: /bridge/* no captura /bridge a secas.
+  "routes": [
+    { "pattern": "micopay.com.mx/bridge", "zone_name": "micopay.com.mx" },
+    { "pattern": "micopay.com.mx/bridge/*", "zone_name": "micopay.com.mx" }
+  ],
+
+  "observability": {
+    "enabled": true
+  }
+}
