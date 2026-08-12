@@ -18,7 +18,54 @@ function getTier(trades: number, completion: number) {
   return TIERS.find((t) => trades >= t.minTrades && completion >= t.minCompletion) ?? TIERS[TIERS.length - 1];
 }
 
+/**
+ * Estas rutas sirven reputación de **comercios de MicoPay**, que es otra cosa
+ * que la reputación de agentes del bazaar: esa vive en `agent_history` (ver
+ * `db/bazaar.ts`), se calcula sola con los swaps del propio mercado y no
+ * depende de nadie.
+ *
+ * La de comercios solo tiene sentido cuando el bazaar se conecte a la red de
+ * efectivo de MicoPay. Mientras tanto la tabla `merchants` de este repo está
+ * vacía —o con datos sembrados—, así que un agente que pagara por preguntar
+ * "¿me fío de este comercio?" recibiría o nada o números inventados sobre
+ * comercios que no existen. En un servicio público eso es peor que un 501.
+ *
+ * Se apagan por defecto, no se borran: la implementación queda íntegra detrás
+ * de la bandera y el contrato del lado servidor está en
+ * `docs/CONTRATO_REPUTACION.md`.
+ */
+const NO_DISPONIBLE = {
+  error: "Not Implemented",
+  code: "MERCHANT_REPUTATION_UNAVAILABLE",
+  message:
+    "La reputación de comercios requiere la conexión con la red de efectivo de MicoPay, " +
+    "que todavía no existe. La reputación de agentes del bazaar sí está disponible y no " +
+    "depende de esto.",
+  hint: "Se habilita con MICOPAY_CASH_NETWORK_ENABLED=true una vez exista la fuente de datos.",
+};
+
 export async function reputationRoutes(fastify: FastifyInstance): Promise<void> {
+  // Se lee al registrar y no al cargar el módulo: así el estado del proceso no
+  // queda congelado en la primera importación, y los tests pueden ejercitar
+  // los dos modos sin trucos con la caché de módulos.
+  const redEfectivoConectada = process.env.MICOPAY_CASH_NETWORK_ENABLED === "true";
+
+  if (!redEfectivoConectada) {
+    // Sin `requirePayment` a propósito: nadie debe pagar x402 por un endpoint
+    // que no va a responder. Cobrar y devolver 501 sería cobrar por nada.
+    fastify.get("/api/v1/reputation/:address", async (_request, reply) =>
+      reply.status(501).send(NO_DISPONIBLE),
+    );
+    fastify.get("/api/v1/merchants", async (_request, reply) =>
+      reply.status(501).send(NO_DISPONIBLE),
+    );
+    fastify.log.warn(
+      { category: "reputation" },
+      "[reputacion] rutas de comercios apagadas (MICOPAY_CASH_NETWORK_ENABLED != true)",
+    );
+    return;
+  }
+
   /**
    * GET /api/v1/reputation/:address
    * x402: $0.0005 USDC

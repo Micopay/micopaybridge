@@ -50,12 +50,17 @@ describe("frontera §M3 — fuente de reputación", () => {
     // La ruta va detrás de x402. El bypass "mock:" exige esta bandera y que
     // NODE_ENV no sea production — index.ts se niega a arrancar con las dos.
     process.env.X402_MOCK_MODE = "true";
+    // La reputación de comercios está apagada por defecto: solo tiene sentido
+    // con la red de efectivo de MicoPay conectada. Aquí se enciende porque lo
+    // que se prueba es justamente esa implementación.
+    process.env.MICOPAY_CASH_NETWORK_ENABLED = "true";
     app = await createApp();
   });
 
   afterEach(async () => {
     await app.close();
     __setReputationSource(null);
+    delete process.env.MICOPAY_CASH_NETWORK_ENABLED;
   });
 
   it("consulta la dirección pedida, no la primera que encuentre", async () => {
@@ -130,5 +135,53 @@ describe("frontera §M3 — fuente de reputación", () => {
     }
 
     expect(respuestas[0]).toEqual(respuestas[1]);
+  });
+});
+
+/**
+ * Por defecto la red de efectivo de MicoPay no está conectada, así que estas
+ * rutas no tienen datos reales que servir. Lo que se comprueba aquí es que lo
+ * digan y que NO cobren por decirlo: un endpoint x402 que cobra y devuelve 501
+ * está cobrando por nada.
+ */
+describe("reputación de comercios apagada por defecto", () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    process.env.X402_MOCK_MODE = "true";
+    delete process.env.MICOPAY_CASH_NETWORK_ENABLED;
+    app = await createApp();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it("501 en /reputation/:address, sin pedir pago", async () => {
+    const res = await app.inject({ method: "GET", url: `/api/v1/reputation/${A}` });
+
+    expect(res.statusCode).toBe(501);
+    expect(res.json().code).toBe("MERCHANT_REPUTATION_UNAVAILABLE");
+  });
+
+  it("no responde 402: no se cobra por un endpoint que no responde", async () => {
+    const res = await app.inject({ method: "GET", url: `/api/v1/reputation/${A}` });
+
+    expect(res.statusCode).not.toBe(402);
+  });
+
+  it("501 en /merchants", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/v1/merchants" });
+
+    expect(res.statusCode).toBe(501);
+    expect(res.json().code).toBe("MERCHANT_REPUTATION_UNAVAILABLE");
+  });
+
+  it("la reputación de agentes del bazaar no se ve afectada", async () => {
+    // Vive en agent_history y no depende de MicoPay: apagar lo de comercios no
+    // debe llevarse por delante el leaderboard del mercado.
+    const res = await app.inject({ method: "GET", url: "/api/v1/bazaar/leaderboard" });
+
+    expect(res.statusCode).not.toBe(501);
   });
 });

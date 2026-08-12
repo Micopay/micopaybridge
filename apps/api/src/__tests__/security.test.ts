@@ -155,8 +155,14 @@ describe("Security Headers & CORS (SEC-21)", () => {
         url: "/api/v1/merchants",
       });
 
-      // Should either succeed or fail gracefully (DB might not be set up in test)
-      expect([200, 500]).toContain(response.statusCode);
+      // Lo que prueba este caso es que la ruta NO exija autenticación, no que
+      // devuelva datos. 501 es la respuesta por defecto desde que la reputación
+      // de comercios está apagada (necesita la red de efectivo de MicoPay, que
+      // todavía no existe) y sigue siendo accesible sin autenticar. 500 cubre
+      // que la base no esté levantada en el entorno de test.
+      expect([200, 500, 501]).toContain(response.statusCode);
+      expect(response.statusCode).not.toBe(401);
+      expect(response.statusCode).not.toBe(403);
     });
 
     it("should not expose sensitive headers in response", async () => {
