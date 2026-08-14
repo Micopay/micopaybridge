@@ -144,3 +144,75 @@ export async function cancelXrplLeg(params: {
 export function xrplAddressFromSeed(seed: string): string {
   return Wallet.fromSeed(seed).address;
 }
+
+/**
+ * Busca en el ledger el `Sequence` de una tx ya confirmada — es lo que hace
+ * falta como `OfferSequence` para cancelar el escrow que esa tx creó. No lo
+ * devuelve Xaman: solo da el hash, hay que ir a buscarlo.
+ */
+export async function fetchTxSequence(txHash: string): Promise<{ account: string; sequence: number } | null> {
+  return withClient(async (client) => {
+    const res = await client.request({ command: "tx", transaction: txHash });
+    const txJson = res.result.tx_json;
+    if (!txJson || typeof txJson.Account !== "string" || typeof txJson.Sequence !== "number") return null;
+    return { account: txJson.Account, sequence: txJson.Sequence };
+  });
+}
+
+/**
+ * Plantilla de EscrowCancel SIN firmar y SIN `Account` — reclamo manual del
+ * propio usuario, para cuando no hay sweeper fondeado (o solo por no
+ * esperarlo). `Account` no importa para saber a dónde va el XRP: XRPL
+ * siempre lo devuelve al `Owner` original sin importar quién la firme —
+ * puede ser el usuario mismo, con su propia wallet ya activada, sin pedirle
+ * fondear nada nuevo.
+ */
+export function activationCancelTxJson(params: {
+  owner: string;
+  offerSequence: number;
+}): Omit<EscrowCancel, "Account"> {
+  return {
+    TransactionType: "EscrowCancel",
+    SourceTag: bt.SOURCE_TAG,
+    Owner: params.owner,
+    OfferSequence: params.offerSequence,
+  };
+}
+
+/**
+ * Plantilla de EscrowCreate SIN firmar y SIN `Account` — para Xaman, que
+ * rellena `Account` con la wallet que de verdad escanea el QR. Nunca ve una
+ * seed ni un Wallet.
+ *
+ * Es la mitad "armar" del par armar/firmar que exige el T&C de Make Waves:
+ * 300 cuentas activas cuentan solo si cada una firma con su propia llave —
+ * cualquier automatización de la firma es "scripted transactions", motivo
+ * de descalificación (§7).
+ *
+ * `CancelAfter` solo no basta — probado en vivo contra mainnet (temMALFORMED
+ * dos veces): la propia validación de xrpl.js lo confirma, EscrowCreate
+ * exige además `Condition` o `FinishAfter`. `FinishAfter` se descartó a
+ * propósito: con eso, CUALQUIERA puede mandar `EscrowFinish` pasado ese
+ * tiempo y el XRP se va al `Destination`, no de vuelta al dueño — rompe la
+ * garantía de que nadie más lo toca. En su lugar, `Condition` con una
+ * preimagen aleatoria que se genera aquí y se descarta sin persistir en
+ * ningún lado: sin la preimagen, `EscrowFinish` es imposible para
+ * cualquiera, ni siquiera para nosotros. La única salida que queda es
+ * `EscrowCancel`, que siempre regresa al dueño original.
+ */
+export function activationTxJson(params: {
+  destinationAddress: string;
+  amountXrp: string;
+  cancelAfterSeconds?: number;
+}): Omit<EscrowCreate, "Account"> {
+  const cancelAfterSec = params.cancelAfterSeconds ?? 300;
+  const preimage = bt.generatePreimage(); // se usa una vez y se olvida — no se guarda
+  return {
+    TransactionType: "EscrowCreate",
+    SourceTag: bt.SOURCE_TAG,
+    Destination: params.destinationAddress,
+    Amount: xrpToDrops(params.amountXrp),
+    Condition: bt.xrplCondition(preimage),
+    CancelAfter: bt.toRippleTime(Math.floor(Date.now() / 1000) + cancelAfterSec),
+  };
+}

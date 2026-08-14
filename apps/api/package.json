@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:live": "tsx src/scripts/live-swap.ts",
+    "test:live:mainnet": "tsx src/scripts/live-swap-mainnet.ts",
     "test:recovery": "tsx src/scripts/live-recovery.ts",
     "test:concurrency": "tsx src/scripts/concurrency-check.ts",
     "seed": "tsx src/scripts/seed.ts",
@@ -32,7 +33,6 @@
     "@micopay/types": "*",
     "@micopaybridge/xrpl-bridge": "*",
     "@stellar/stellar-sdk": "^16.0.1",
-    "xrpl": "^5.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.14.0",
     "@types/pg": "^8.11.6",
@@ -42,7 +42,9 @@
     "pg": "^8.13.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.3",
-    "viem": "^2.54.1"
+    "viem": "^2.54.1",
+    "xrpl": "^5.0.0",
+    "xumm-sdk": "^1.11.2"
   },
   "devDependencies": {
     "fast-check": "^4.8.0",
