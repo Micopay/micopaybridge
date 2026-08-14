@@ -16,6 +16,8 @@ import { agentRoutes } from "./routes/agent.js";
 import { swapRoutes } from "./routes/swaps.js";
 import { cashRoutes } from "./routes/cash.js";
 import { fundRoutes } from "./routes/fund.js";
+import { activationRoutes } from "./routes/activation.js";
+import { startActivationSweeper } from "./lib/activationSweeper.js";
 import { recoverInFlightSwaps, startRefundRetryLoop } from "./lib/recovery.js";
 import { pendingRefunds } from "./lib/swapStore.js";
 import { runMigrations } from "./db/migrator.js";
@@ -131,6 +133,7 @@ export async function createApp() {
   app.register(swapRoutes);
   app.register(cashRoutes);
   app.register(fundRoutes);
+  app.register(activationRoutes);
   app.register(reputationRoutes);
   app.register(serviceRoutes);
   app.register(demoRoutes);
@@ -208,6 +211,7 @@ async function start() {
   const app = await createApp();
   await arrancarMigraciones();
   await arrancarRecuperacion();
+  startActivationSweeper();
 
   // Log security configuration on startup
   console.log(`[SECURITY] NODE_ENV: ${NODE_ENV}`);
