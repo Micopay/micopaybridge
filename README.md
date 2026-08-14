@@ -1,11 +1,90 @@
 # MicoPay Bridge
 
-Puente XRPL↔Stellar para atomic swaps HTLC, y el stack de agentes que lo usa.
+**Un mercado P2P para agentes de IA, construido sobre escrows y atomic swaps.**
 
-Repo hermano de [`micopay-protocol`](https://github.com/ericmt-98/micopay-protocol), del que
-salió por el split de agosto 2026. **Aquí no vive nada del APK ni de la app móvil.**
+Dos agentes que no se conocen ni confían el uno en el otro acuerdan un intercambio, lo
+liquidan en dos cadenas distintas y ninguno puede quedarse con el dinero del otro. Sin
+custodio, sin cuenta, sin registro previo. La garantía no es una empresa: es que las dos
+piernas del intercambio están atadas al mismo secreto criptográfico.
 
-## Qué hay hoy
+## Qué es
+
+El **bazaar** es el mercado: un agente publica lo que ofrece y lo que quiere, otros
+cotizan, y al aceptarse una cotización se liquida on-chain.
+
+| Endpoint | Qué hace |
+|---|---|
+| `POST /api/v1/bazaar/intent` | publicar lo que ofreces y lo que buscas |
+| `POST /api/v1/bazaar/quote` | cotizar el intent de otro |
+| `POST /api/v1/bazaar/accept` | aceptar y liquidar |
+| `GET /api/v1/bazaar/feed` | qué se está ofreciendo ahora |
+| `GET /api/v1/bazaar/reputation/:address` | historial de un agente en este mercado |
+
+El **puente XRPL↔Stellar** es cómo se liquida cuando las dos partes están en cadenas
+distintas: un escrow nativo de XRPL contra un HTLC en Soroban, gobernados por una sola
+preimagen. Ver [El swap de dos piernas](#el-swap-de-dos-piernas).
+
+**x402** es cómo se paga por consumir el protocolo: un agente que llama a un endpoint de
+pago recibe un `402`, paga en USDC y reintenta. Sin cuentas ni API keys — el pago *es* la
+autenticación.
+
+**Las credenciales ZK** (circuitos Noir en `circuits/`) permiten a un agente demostrar que
+tiene derecho a algo sin revelar quién es ni enlazar sus operaciones entre sí.
+
+## Para quién
+
+Para agentes, no para personas. La consola de `apps/web` existe para que un humano pueda
+*mirar* lo que pasa, pero ningún agente la usa: hablan HTTP contra la API directamente.
+Por eso no hay pantalla de login en ningún sitio — no habría quién la llenara.
+
+## Reputación: la del mercado es propia
+
+Un agente acumula historial **en este mercado**: cuántos intercambios publicó, cuántos
+cerró, cuántos canceló y qué volumen movió. Vive en `agent_history`, se escribe sola con
+la actividad del bazaar y **no depende de MicoPay ni de ningún sistema externo**.
+
+Es distinta de la reputación de **comercios** de la red de efectivo de MicoPay, que solo
+tendrá sentido el día que el bazaar se conecte a ella. Esas rutas
+(`/api/v1/reputation/:address` y `/api/v1/merchants`) responden hoy **501**: la tabla que
+consultan está vacía en este repo, y devolver números sembrados sobre comercios que no
+existen sería peor que no responder. Se encienden con
+`MICOPAY_CASH_NETWORK_ENABLED=true` cuando exista la fuente; el contrato que tendría que
+implementar el otro lado está en
+[`docs/CONTRATO_REPUTACION.md`](docs/CONTRATO_REPUTACION.md).
+
+## Qué esperamos
+
+Por orden, no por fecha:
+
+1. **Cerrar el ciclo en mainnet.** Hoy todo corre contra testnets. El swap está probado de
+   punta a punta, pero la red está fijada en el código en varios sitios y los contratos
+   solo existen en testnet.
+2. **Desplegar el protocolo.** La consola ya está publicada; la API todavía no vive en
+   ningún sitio.
+3. **Que el mercado tenga agentes de verdad**, no dos guiones de demo — que es cuando
+   `agent_history` empieza a significar algo.
+4. **Conectar el bazaar a la red de efectivo de MicoPay.** Ese es el día que un agente
+   puede terminar un intercambio en pesos físicos, y el día que la reputación de comercios
+   se enciende.
+5. **Reputación portátil.** Los circuitos de `circuits/reputation_v1` apuntan a que un
+   agente pruebe su tier sin revelar su historial ni enlazar sus direcciones.
+
+Lo que **no** es este repo: nada del APK ni de la app móvil retail. Eso vive en
+[`micopay-protocol`](https://github.com/Micopay/micopay-protocol).
+
+## Estado del despliegue
+
+| Pieza | Dónde | Estado |
+|---|---|---|
+| Consola (`apps/web`) | [micopay.com.mx/bridge](https://micopay.com.mx/bridge) | publicada, **sin API a la que llamar** |
+| API (`apps/api`) | — | sin desplegar |
+| Contratos Soroban | testnet | desplegados |
+| Pierna XRPL | testnet | verificada contra la red |
+
+La consola dice en pantalla que no tiene backend, en vez de fallar en silencio. Cuando la
+API exista se recompila con `VITE_API_URL` y las pestañas vuelven.
+
+## Qué hay en el repo
 
 | Ruta | Qué es | Estado |
 |---|---|---|
@@ -20,120 +99,6 @@ salió por el split de agosto 2026. **Aquí no vive nada del APK ni de la app m�
 | `contracts/zk-verifier/` | `ZkVerifierRegistry` | migrado tal cual |
 | `circuits/` | Noir: `access_credential_v1`, `poseidon_preimage`, `reputation_v1` | migrado tal cual |
 | `docs/` | Especificaciones ZK, auditorías y planes | migrado tal cual — [leer con advertencia](docs/README.md) |
-
-### Qué se quedó fuera de `apps/api`
-
-Rutas retail cuya versión viva es `micopay/backend`: `auth`, `users`, `cetes`, `blend`,
-`kyc`, `ramp`, `merchants`, `trade-messages`, `trades`, `stellar`. Con ellas se fueron
-sus servicios (`etherfuse`, `merchant`, `p2p-registry`, `secret`, `trade`),
-`db/auth.ts`, `middleware/auth.middleware.ts`, `lib/webhook-auth.ts`,
-`lib/trade-auth.ts`, sus tests y la migración `002_etherfuse_ramp.sql`.
-
-**`cash`, `fund` y `services/p2p.ts` NO están fuera — el §M2 del plan se equivocaba
-para estos tres.** Su justificación era "la versión viva está en `micopay/backend`", y
-ahí no existen: borrarlos no los movía de sitio, los eliminaba. `/cash/*` es el acceso a
-efectivo físico que es el pitch del repo, y `/fund` es el agente pagando al protocolo.
-Recuperados tal cual — `services/p2p.ts` es autocontenido. Detalle en
-[`docs/SEC-02_EN_APPS_API.md`](docs/SEC-02_EN_APPS_API.md).
-
-`routes/agent.ts` y `routes/swaps.ts` **sí están registrados** en `index.ts`. Llevaban
-sin registrar desde el origen — plan y ejecutor existían pero no eran alcanzables por
-HTTP, y el §M4.5 pide el flujo de punta a punta. Es el único cambio de comportamiento
-hecho sin que el plan lo pidiera explícitamente; se revierte borrando dos líneas si el
-equipo prefiere que sigan sin exponerse.
-
-### Qué se quedó fuera de `apps/web`
-
-`App.tsx` no tiene router: monta seis pestañas y nada más. Todo `src/pages/` era
-**inalcanzable** — doce pantallas retail duplicadas de `micopay/frontend`, más
-`BottomNav`, `Logo`, `MapSim`, `MerchantCard`, `Skeleton`, `services/api.ts` y las
-imágenes de `public/` que solo usaba el mapa. Nada de eso se migró.
-
-`SwapStatus.tsx` sí se migra aunque hoy no lo importa nadie: el §M5 del plan lo nombra
-como material del demo, y es donde entrará la pierna XRPL cuando sustituya a
-`ATOMIC_SWAP_CONTRACT_B`.
-
-## Qué se archivó
-
-`apps/agent/` (AIGENTS: intent parser, executor, tools — §2.1 del plan) se migró el
-2026-08-07 y se archivó el 2026-08-08, en `archive/apps-agent/`, fuera del workspace
-activo. Dos razones, las dos comprobadas ejecutando código, no leyéndolo:
-
-1. **Nadie lo usa.** Ningún `package.json` del monorepo depende de `@micopay/agent`;
-   `apps/api/routes/agent.ts` reimplementa su propio `planSwap` en vez de importarlo;
-   nunca se había compilado.
-2. **Su pieza central no puede funcionar.** `SwapExecutor` depende de
-   `checkChainBLock()`, que no consulta nada — inventa un hash y lo devuelve como si
-   fuera un lock real, siempre. Probado contra testnet: bloquea fondos de verdad en
-   cadena A y después revienta siempre al liberar en cadena B, sin camino automático
-   de refund para ese caso. Es más viejo que M4.5 — el mismo patrón de "cadena B
-   simulada" que el puente XRPL reemplazó en el resto del repo, pero aquí nadie lo
-   tocó porque nadie lo ejecutaba. Un solo commit toca `executor.ts` en toda la
-   historia de este repo: el de migrarlo, copia tal cual desde `micopay-protocol`.
-
-Lo que ya cumple el mismo objetivo (dos agentes, sin custodio, probado end-to-end):
-[`packages/xrpl-bridge`](packages/xrpl-bridge/README.md) (`agent_a.js` / `agent_b.js`).
-Detalle completo, con la corrida que lo prueba, en
-[`archive/apps-agent/ARCHIVADO.md`](archive/apps-agent/ARCHIVADO.md).
-
-`packages/sdk` no se archivó — su mecanismo (`lock`/`release`/`getStatus`) funciona
-bien, verificado hoy contra testnet. Solo se quedó sin consumidor vivo.
-
-## Qué falta migrar
-
-Solo `contracts/micopay-badges`, y está **sin decidir**: el plan lo deja abierto en §2.3
-y no aparece referenciado ni en `render.yaml` ni en `.env.example`.
-
-`docs/xrpl-hackathon/`, que el §2.1 también lista, **no existe** en el repo origen:
-buscado en todas las ramas remotas y en la historia completa. Ver
-[SUBMISSION_CORRECCIONES.md](docs/SUBMISSION_CORRECCIONES.md).
-
-## La frontera entre los dos repos
-
-| | `micopaybridge` (aquí) | `micopay-protocol` |
-|---|---|---|
-| Producto | Agentes, x402, ZK, puente cross-chain | APK + app móvil retail |
-| Backend | `apps/api` — protocolo x402 | `micopay/backend` — en producción |
-| Escrow Soroban | `contracts/micopay-escrow` — el del servicio x402 | `micopay/contracts/escrow` — el del móvil, `CB4M5777…ALO3HZ` |
-| Se despliega | no todavía | sí |
-
-Los dos escrows **divergieron en abril y no son intercambiables**. Difieren en 78 líneas.
-Unificarlos sería un cambio de comportamiento en producción disfrazado de limpieza.
-
-### La frontera del §M3 — decidida: opción (b)
-
-`apps/api` sirve reputación de comercios a agentes detrás de x402, pero esos datos son del
-producto retail. **La decisión es la (b):** `micopay/backend` expone un endpoint interno y
-este repo lo consume, con un contrato versionado. No la (c) —cada repo con su copia—, que
-es la deriva que el commit `1811016` ya documentó.
-
-El lado cliente **está hecho**: [`lib/reputation-source.ts`](apps/api/src/lib/reputation-source.ts).
-El servidor no se puede escribir desde aquí, vive en el otro repo y es producción. El
-contrato que tiene que implementar está en
-[`docs/CONTRATO_REPUTACION.md`](docs/CONTRATO_REPUTACION.md).
-
-Mientras el endpoint no exista se usa la (a) —leer el mismo esquema— como respaldo, y el
-arranque lo grita en el log. Cambiar de una a otra es una variable de entorno:
-
-```bash
-MICOPAY_BACKEND_URL=http://micopay-backend.internal:3002
-```
-
-Lo que se gana ya, sin esperar al otro equipo: **el acoplamiento cabe en un archivo**. No
-queda ni un `import` de `db/merchants` en las rutas, y la ruta de reputación no sabe de
-dónde salen los datos — hay un test que compara la respuesta con las dos fuentes y exige
-que sea idéntica.
-
-**Un fallo que salió al tocar esto:** la consulta de `/api/v1/reputation/:address` **no
-filtraba por la dirección pedida**. Ordenaba por `verified_at` y devolvía `LIMIT 1`, así
-que cualquier dirección válida obtenía siempre el mismo comercio — en la ruta cuya única
-función es decidir si fiarse de uno en concreto, y que además cobra por responder.
-Corregido, con test de regresión.
-
-## Origen del código migrado
-
-Copia plana desde `micopay-protocol` en `0b81a78`. No se trajo historia: para rastrear un
-archivo hay que buscarlo en el repo de origen a esa altura.
 
 ## El swap de dos piernas
 
@@ -289,6 +254,109 @@ pendiente aquí. Detalle en [`docs/SEC-02_EN_APPS_API.md`](docs/SEC-02_EN_APPS_A
 `fund/demo` mandaba 0.10 USDC reales sin pago ni autenticación, con la llave del demo,
 alcanzable por cualquiera que conociera la URL en un repo público. Ahora detrás de
 `X402_MOCK_MODE` + fuera de producción, con límite de 3/min.
+
+## La frontera con `micopay-protocol`
+
+| | `micopaybridge` (aquí) | `micopay-protocol` |
+|---|---|---|
+| Producto | Agentes, x402, ZK, puente cross-chain | APK + app móvil retail |
+| Backend | `apps/api` — protocolo x402 | `micopay/backend` — en producción |
+| Escrow Soroban | `contracts/micopay-escrow` — el del servicio x402 | `micopay/contracts/escrow` — el del móvil, `CB4M5777…ALO3HZ` |
+| Se despliega | no todavía | sí |
+
+Los dos escrows **divergieron en abril y no son intercambiables**. Difieren en 78 líneas.
+Unificarlos sería un cambio de comportamiento en producción disfrazado de limpieza.
+
+El acoplamiento con el otro repo **cabe en un archivo**:
+[`lib/reputation-source.ts`](apps/api/src/lib/reputation-source.ts). No queda ni un
+`import` de `db/merchants` en las rutas, y la ruta de reputación no sabe de dónde salen
+los datos — hay un test que compara la respuesta con las dos fuentes posibles y exige que
+sea idéntica. El día que el bazaar se conecte a la red de efectivo, pasar de leer el
+esquema a consumir un endpoint versionado es una variable de entorno, no un refactor.
+
+**Un fallo que salió al tocar esto:** la consulta de `/api/v1/reputation/:address` **no
+filtraba por la dirección pedida**. Ordenaba por `verified_at` y devolvía `LIMIT 1`, así
+que cualquier dirección válida obtenía siempre el mismo comercio — en la ruta cuya única
+función es decidir si fiarse de uno en concreto, y que además cobra por responder.
+Corregido, con test de regresión.
+
+## Historial del split
+
+Este repo salió de `micopay-protocol` en agosto de 2026. Lo que sigue es la contabilidad
+de esa migración: qué se movió, qué se dejó fuera y por qué. Sirve para rastrear
+decisiones, no para entender el producto.
+
+### Origen del código migrado
+
+Copia plana desde `micopay-protocol` en `0b81a78`. No se trajo historia: para rastrear un
+archivo hay que buscarlo en el repo de origen a esa altura.
+
+### Qué se quedó fuera de `apps/api`
+
+Rutas retail cuya versión viva es `micopay/backend`: `auth`, `users`, `cetes`, `blend`,
+`kyc`, `ramp`, `merchants`, `trade-messages`, `trades`, `stellar`. Con ellas se fueron
+sus servicios (`etherfuse`, `merchant`, `p2p-registry`, `secret`, `trade`),
+`db/auth.ts`, `middleware/auth.middleware.ts`, `lib/webhook-auth.ts`,
+`lib/trade-auth.ts`, sus tests y la migración `002_etherfuse_ramp.sql`.
+
+**`cash`, `fund` y `services/p2p.ts` NO están fuera — el §M2 del plan se equivocaba
+para estos tres.** Su justificación era "la versión viva está en `micopay/backend`", y
+ahí no existen: borrarlos no los movía de sitio, los eliminaba. `/cash/*` es el acceso a
+efectivo físico que es el pitch del repo, y `/fund` es el agente pagando al protocolo.
+Recuperados tal cual — `services/p2p.ts` es autocontenido. Detalle en
+[`docs/SEC-02_EN_APPS_API.md`](docs/SEC-02_EN_APPS_API.md).
+
+`routes/agent.ts` y `routes/swaps.ts` **sí están registrados** en `index.ts`. Llevaban
+sin registrar desde el origen — plan y ejecutor existían pero no eran alcanzables por
+HTTP, y el §M4.5 pide el flujo de punta a punta. Es el único cambio de comportamiento
+hecho sin que el plan lo pidiera explícitamente; se revierte borrando dos líneas si el
+equipo prefiere que sigan sin exponerse.
+
+### Qué se quedó fuera de `apps/web`
+
+`App.tsx` no tiene router: monta seis pestañas y nada más. Todo `src/pages/` era
+**inalcanzable** — doce pantallas retail duplicadas de `micopay/frontend`, más
+`BottomNav`, `Logo`, `MapSim`, `MerchantCard`, `Skeleton`, `services/api.ts` y las
+imágenes de `public/` que solo usaba el mapa. Nada de eso se migró.
+
+`SwapStatus.tsx` sí se migra aunque hoy no lo importa nadie: el §M5 del plan lo nombra
+como material del demo, y es donde entrará la pierna XRPL cuando sustituya a
+`ATOMIC_SWAP_CONTRACT_B`.
+
+### Qué se archivó
+
+`apps/agent/` (AIGENTS: intent parser, executor, tools — §2.1 del plan) se migró el
+2026-08-07 y se archivó el 2026-08-08, en `archive/apps-agent/`, fuera del workspace
+activo. Dos razones, las dos comprobadas ejecutando código, no leyéndolo:
+
+1. **Nadie lo usa.** Ningún `package.json` del monorepo depende de `@micopay/agent`;
+   `apps/api/routes/agent.ts` reimplementa su propio `planSwap` en vez de importarlo;
+   nunca se había compilado.
+2. **Su pieza central no puede funcionar.** `SwapExecutor` depende de
+   `checkChainBLock()`, que no consulta nada — inventa un hash y lo devuelve como si
+   fuera un lock real, siempre. Probado contra testnet: bloquea fondos de verdad en
+   cadena A y después revienta siempre al liberar en cadena B, sin camino automático
+   de refund para ese caso. Es más viejo que M4.5 — el mismo patrón de "cadena B
+   simulada" que el puente XRPL reemplazó en el resto del repo, pero aquí nadie lo
+   tocó porque nadie lo ejecutaba. Un solo commit toca `executor.ts` en toda la
+   historia de este repo: el de migrarlo, copia tal cual desde `micopay-protocol`.
+
+Lo que ya cumple el mismo objetivo (dos agentes, sin custodio, probado end-to-end):
+[`packages/xrpl-bridge`](packages/xrpl-bridge/README.md) (`agent_a.js` / `agent_b.js`).
+Detalle completo, con la corrida que lo prueba, en
+[`archive/apps-agent/ARCHIVADO.md`](archive/apps-agent/ARCHIVADO.md).
+
+`packages/sdk` no se archivó — su mecanismo (`lock`/`release`/`getStatus`) funciona
+bien, verificado hoy contra testnet. Solo se quedó sin consumidor vivo.
+
+### Qué falta migrar
+
+Solo `contracts/micopay-badges`, y está **sin decidir**: el plan lo deja abierto en §2.3
+y no aparece referenciado ni en `render.yaml` ni en `.env.example`.
+
+`docs/xrpl-hackathon/`, que el §2.1 también lista, **no existe** en el repo origen:
+buscado en todas las ramas remotas y en la historia completa. Ver
+[SUBMISSION_CORRECCIONES.md](docs/SUBMISSION_CORRECCIONES.md).
 
 ## Desarrollo
 
