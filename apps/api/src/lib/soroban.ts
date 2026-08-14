@@ -19,7 +19,11 @@ import { swapStore, type SwapState } from "./swapStore.js";
 import { lockXrplLeg, revealOnXrpl, cancelXrplLeg, xrplAddressFromSeed } from "./xrpl-leg.js";
 
 const RPC_URL = process.env.STELLAR_RPC_URL ?? "https://soroban-testnet.stellar.org";
-const NET      = StellarSdk.Networks.TESTNET;
+// El deploy pone STELLAR_NETWORK=PUBLIC en mainnet — sin este check, RPC_URL
+// podía apuntar a mainnet mientras las txs se firmaban con el passphrase de
+// testnet (red equivocada = firma inválida, y el Asset.contractId() de abajo
+// también calcularía el SAC de la red que no es).
+const NET = process.env.STELLAR_NETWORK === "PUBLIC" ? StellarSdk.Networks.PUBLIC : StellarSdk.Networks.TESTNET;
 
 const USDC_ISSUER = process.env.USDC_ISSUER ?? "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 const USDC_SAC    = new StellarSdk.Asset("USDC", USDC_ISSUER).contractId(NET);
