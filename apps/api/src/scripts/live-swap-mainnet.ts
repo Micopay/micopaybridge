@@ -31,6 +31,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
 import { isValidClassicAddress } from "xrpl";
+import { IS_MAINNET } from "../lib/stellarNetwork.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -85,7 +86,9 @@ function requireEnv(name: string, value: string | undefined): string {
 }
 
 async function main(): Promise<void> {
-  requireEnv("STELLAR_NETWORK=PUBLIC", process.env.STELLAR_NETWORK === "PUBLIC" ? "ok" : undefined);
+  // Vía lib/stellarNetwork.ts, que acepta PUBLIC y MAINNET: comparar la grafía
+  // aquí bloqueaba el smoke test de mainnet a quien hubiera configurado la otra.
+  requireEnv("STELLAR_NETWORK=PUBLIC|MAINNET", IS_MAINNET ? "ok" : undefined);
   requireEnv("ATOMIC_SWAP_CONTRACT_A", CONTRACT_A);
   requireEnv("XRPL_SERVER", XRPL_SERVER);
   requireEnv("XRPL_INITIATOR_SEED", XRPL_INITIATOR_SEED);
