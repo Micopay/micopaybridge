@@ -343,7 +343,23 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
         ?? parseFloat(intent.wanted_symbol === "USDC" ? intent.wanted_amount : "28.57");
 
       fastify.log.info(`Bazaar: Locking Stellar side for intent ${body.intent_id}...`);
-      const lock = await lockAtomicSwap({ amountUsdc, secretHash, timeoutMinutes: 60 });
+
+      // El lock tiene que confirmarse antes de tocar cualquier estado. Si falla,
+      // el intent queda como estaba y no se registra reputacion: no hubo swap.
+      let lock: Awaited<ReturnType<typeof lockAtomicSwap>>;
+      try {
+        lock = await lockAtomicSwap({ amountUsdc, secretHash, timeoutMinutes: 60 });
+      } catch (err: any) {
+        const reason = err?.message ?? String(err);
+        fastify.log.error(`Bazaar: on-chain lock failed for intent ${body.intent_id}: ${reason}`);
+        return reply.status(502).send({
+          error: "On-chain lock failed",
+          message: "No funds were locked. The intent was not modified.",
+          intent_id: body.intent_id,
+          intent_status: intent.status,
+          reason,
+        });
+      }
 
       await updateIntent(body.intent_id, {
         status: "negotiating",
