@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { requirePayment } from "../middleware/x402.js";
-import { randomUUID, randomBytes, createHash } from "crypto";
+import { randomUUID } from "crypto";
 import { lockAtomicSwap } from "../services/stellar.service.js";
 import {
   initBazaarTables,
@@ -319,7 +319,23 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.post(
     "/api/v1/bazaar/accept",
-    { preHandler: requirePayment({ amount: "0.005", service: "bazaar_accept" }) },
+    {
+      preHandler: requirePayment({ amount: "0.005", service: "bazaar_accept" }),
+      schema: {
+        body: {
+          type: "object",
+          required: ["secret_hash"],
+          properties: {
+            intent_id: { type: "string", minLength: 1 },
+            quote_id: { type: "string" },
+            // sha256(preimagen) en hexadecimal minuscula. El patron cubre
+            // longitud, alfabeto y caja en un solo lugar, en el borde HTTP.
+            secret_hash: { type: "string", pattern: "^[0-9a-f]{64}$" },
+            amount_usdc: { type: "number", exclusiveMinimum: 0 },
+          },
+        },
+      },
+    },
     async (request, reply) => {
       const body = request.body as { intent_id: string; quote_id?: string; secret_hash?: string; amount_usdc?: number };
 
@@ -331,8 +347,10 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
       if (!intent) return reply.status(404).send({ error: "Intent not found" });
       if (intent.status !== "active") return reply.status(409).send({ error: `Intent is already ${intent.status}` });
 
-      const secretHash = body.secret_hash
-        ?? createHash("sha256").update(randomBytes(32)).digest("hex");
+      // Validado por el schema de la ruta: presente y 64 hex en minuscula.
+      // El servidor nunca genera la preimagen: en un protocolo no custodial la
+      // genera el iniciador y se la queda. El servidor solo ve el hash.
+      const secretHash = body.secret_hash as string;
 
       const quotes = await getQuotesForIntent(body.intent_id);
       const quote = body.quote_id

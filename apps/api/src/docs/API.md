@@ -41,6 +41,39 @@ Si no incluyes el header, recibirás un `402 Payment Required` con las instrucci
 | POST | `/api/v1/bazaar/accept` | $0.005 | Aceptar deal |
 | GET | `/api/v1/bazaar/reputation/:addr` | Gratis | Reputación agent |
 
+#### POST /api/v1/bazaar/accept
+
+`secret_hash` es **obligatorio**. El servidor no genera preimagenes.
+
+En un protocolo no custodial la preimagen la genera el iniciador y se la queda:
+es la unica llave que abre el escrow. El servidor solo debe ver
+`sha256(preimagen)`.
+
+| Campo | Tipo | Obligatorio | Formato |
+|-------|------|-------------|---------|
+| `intent_id` | string | si | no vacio |
+| `secret_hash` | string | **si** | 64 caracteres hexadecimales en minuscula |
+| `quote_id` | string | no | |
+| `amount_usdc` | number | no | mayor que cero |
+
+Un `secret_hash` ausente o mal formado (largo incorrecto, caracteres no
+hexadecimales, mayusculas) devuelve **400** y no bloquea nada.
+
+```bash
+# La preimagen se genera del lado del cliente y NO se envia
+PREIMAGE=$(openssl rand -hex 32)
+SECRET_HASH=$(printf '%s' "$PREIMAGE" | xxd -r -p | openssl dgst -sha256 -hex | awk '{print $2}')
+# Guardala: sin ella los fondos no se pueden liberar
+
+curl -H "X-PAYMENT: mock:GTEST123:0.005" \
+  -H "Content-Type: application/json" \
+  -d "{\"intent_id\":\"int-001\",\"secret_hash\":\"$SECRET_HASH\"}" \
+  http://localhost:3000/api/v1/bazaar/accept
+```
+
+Si el lock on-chain falla, la respuesta es **502** y el intent queda sin
+modificar: no se bloquearon fondos.
+
 ### Cash (P2P Exchange)
 
 | Método | Ruta | Precio | Descripción |
