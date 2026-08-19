@@ -221,16 +221,13 @@ export async function lockAtomicSwap(params: {
       explorerUrl: `https://stellar.expert/explorer/testnet/tx/${txHash}`,
     };
   } catch (err: any) {
-    // Graceful demo fallback — clearly labelled so judges understand
-    console.warn(`[Bazaar] On-chain lock failed (falling back to demo mode): ${err.message || err}`);
-    const demoHash = `demo_atomic_${Date.now()}`;
-    const { createHash } = await import('crypto');
-    const swapId = createHash('sha256').update(secretHash).digest('hex');
-    return {
-      txHash: demoHash,
-      swapId,
-      explorerUrl: `https://stellar.expert/explorer/testnet/tx/${demoHash}`,
-    };
+    // No hay fallback. Esta es una capa de liquidacion: devolver un txHash que
+    // la cadena nunca produjo hace que el llamador crea que hay fondos
+    // bloqueados cuando no se bloqueo nada. Fallar abierto informando exito es
+    // el peor modo de falla posible aca, peor que un error, porque un error al
+    // menos es accionable.
+    console.error(`[Bazaar] On-chain lock failed: ${err?.message ?? err}`);
+    throw err instanceof Error ? err : new Error(String(err));
   }
 }
 
