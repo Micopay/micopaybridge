@@ -56,7 +56,9 @@ describe("GET /api/v1/services catalog matches the priced routes", () => {
       const reputation = body.services.find((s) => s.name === "reputation");
       expect(reputation).toBeDefined();
       expect(reputation!.available).toBe(false);
-      expect(reputation!.price_usdc).toBeNull();
+      // price_usdc is omitted (not null) while disabled, so no chargeable price
+      // is advertised and strict string-parsers don't break on a type change.
+      expect(reputation!.price_usdc).toBeUndefined();
     } finally {
       await app.close();
     }

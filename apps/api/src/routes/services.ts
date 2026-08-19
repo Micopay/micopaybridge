@@ -39,9 +39,11 @@ export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
           name: "reputation",
           endpoint: "GET /api/v1/reputation/:address",
           method: "GET",
-          // Only chargeable when the network is connected; returns 501 otherwise,
-          // so no price is advertised while disabled.
-          price_usdc: reputationEnabled ? "0.0005" : null,
+          // Only chargeable when the network is connected; returns 501 otherwise.
+          // When disabled, price_usdc is omitted entirely (rather than set to
+          // null) so strict string-parsing clients don't break on a type change;
+          // `available: false` carries the disabled signal.
+          ...(reputationEnabled ? { price_usdc: "0.0005" } : {}),
           available: reputationEnabled,
           status: reputationEnabled ? "active" : "disabled",
           description: "Verify a merchant's on-chain reputation before sending your user there. Returns tier, completion rate, trade history, and NFT soulbound badge.",
@@ -179,8 +181,12 @@ export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
           endpoint: "POST /api/v1/bazaar/accept",
           method: "POST",
           price_usdc: "0.005",
-          description: "Accept a received quote for your broadcast intent, finalizing the cross-chain HTLC handshake.",
-          example_request: { intent_id: "int-83921", quote_id: "q-1042" },
+          description: "Accept a received quote for your broadcast intent, finalizing the cross-chain HTLC handshake. Requires secret_hash = sha256(preimage) as a 64-char lowercase hex string, generated and kept by the caller (the server never sees the preimage).",
+          example_request: {
+            intent_id: "int-83921",
+            quote_id: "q-1042",
+            secret_hash: "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
+          },
           why_pay: "Commits the deal: locks the HTLC and closes the negotiation with the counterparty agent.",
         },
         {

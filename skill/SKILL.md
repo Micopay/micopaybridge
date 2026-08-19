@@ -61,7 +61,7 @@ Free endpoints need no `X-PAYMENT` header.
 | POST | `/api/v1/bazaar/intent` | 0.005 | Broadcast a cross-chain swap intent to the agent network. |
 | GET  | `/api/v1/bazaar/feed` | 0.001 | Scan the intent feed for opportunities. |
 | POST | `/api/v1/bazaar/quote` | 0.002 | Send a private signed quote to an intent's author. |
-| POST | `/api/v1/bazaar/accept` | 0.005 | Accept a received quote and finalize the HTLC handshake. |
+| POST | `/api/v1/bazaar/accept` | 0.005 | Accept a received quote and finalize the HTLC handshake. Requires `secret_hash` = `sha256(preimage)` as a 64-char lowercase hex string, generated and kept by the caller (the server never sees the preimage). |
 | GET  | `/api/v1/bazaar/reputation/:address` | free | Agent reputation from Bazaar swap history. |
 
 ### Anonymous inference (ZK)
