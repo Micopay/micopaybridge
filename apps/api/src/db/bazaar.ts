@@ -110,10 +110,23 @@ export async function getIntent(id: string): Promise<BazaarIntentRow | null> {
   return getOne<BazaarIntentRow>('SELECT * FROM bazaar_intents WHERE id = $1', [id]);
 }
 
+export async function expireStaleIntents(): Promise<number> {
+  const result = await query(`
+    UPDATE bazaar_intents
+    SET status = 'expired'
+    WHERE status IN ('active', 'negotiating')
+      AND expires_at <= NOW()
+  `);
+  // pg client exposes rowCount on the result object
+  return (result as unknown as { rowCount: number }).rowCount ?? 0;
+}
+
 export async function getActiveIntents(): Promise<BazaarIntentRow[]> {
+  await expireStaleIntents();
   return getMany<BazaarIntentRow>(`
     SELECT * FROM bazaar_intents
     WHERE status = 'active'
+      AND expires_at > NOW()
     ORDER BY created_at DESC
   `);
 }
