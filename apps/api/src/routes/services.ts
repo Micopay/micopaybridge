@@ -7,6 +7,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
   const BASE_URL = process.env.API_BASE_URL ?? "https://api.micopay.xyz";
+  // `reputation` only serves data (and only charges) when the merchant/cash
+  // network is connected. Otherwise the route returns 501 without charging, so
+  // it must not be advertised as an active priced service.
+  const reputationEnabled = process.env.MICOPAY_CASH_NETWORK_ENABLED === "true";
 
   /**
    * GET /api/v1/services
@@ -35,8 +39,15 @@ export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
           name: "reputation",
           endpoint: "GET /api/v1/reputation/:address",
           method: "GET",
-          price_usdc: "0.0005",
+          // Only chargeable when the network is connected; returns 501 otherwise.
+          // When disabled, price_usdc is omitted entirely (rather than set to
+          // null) so strict string-parsing clients don't break on a type change;
+          // `available: false` carries the disabled signal.
+          ...(reputationEnabled ? { price_usdc: "0.0005" } : {}),
+          available: reputationEnabled,
+          status: reputationEnabled ? "active" : "disabled",
           description: "Verify a merchant's on-chain reputation before sending your user there. Returns tier, completion rate, trade history, and NFT soulbound badge.",
+          note: reputationEnabled ? undefined : "Disabled: returns 501 until MICOPAY_CASH_NETWORK_ENABLED=true. Not charged while disabled.",
           example_request: { address: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG" },
           why_pay: "Reputation is the only signal an AI agent has before trusting a stranger with cash. This data is on-chain and cannot be faked.",
         },
@@ -128,6 +139,64 @@ export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
           description: "Fund the MicoPay project using x402. Meta-demo: the agent funds the protocol it just used, proving the infrastructure is self-sustaining.",
           example_request: { message: "x402 works!" },
           why_pay: "This IS the demonstration. The protocol finances itself with its own mechanism.",
+        },
+        {
+          name: "swap_search",
+          endpoint: "GET /api/v1/swaps/search",
+          method: "GET",
+          price_usdc: "0.001",
+          description: "Find available cross-chain swap counterparties with live Horizon rates.",
+          example_request: { from: "XLM", to: "USDC", amount: "100" },
+          why_pay: "Live counterparty and rate discovery across chains, priced per lookup.",
+        },
+        {
+          name: "swap_plan",
+          endpoint: "POST /api/v1/swaps/plan",
+          method: "POST",
+          price_usdc: "0.01",
+          description: "Turn a natural-language intent into a structured, executable SwapPlan (parsed by Claude).",
+          example_request: { intent: "swap 100 XLM for USDC on Stellar" },
+          why_pay: "Agent-grade intent parsing into a concrete plan you can execute.",
+        },
+        {
+          name: "swap_execute",
+          endpoint: "POST /api/v1/swaps/execute",
+          method: "POST",
+          price_usdc: "0.05",
+          description: "Execute a previously created SwapPlan across chains.",
+          example_request: { plan_id: "plan-83921" },
+          why_pay: "Executes the real cross-chain swap atomically — the settlement leg.",
+        },
+        {
+          name: "swap_status",
+          endpoint: "GET /api/v1/swaps/:id/status",
+          method: "GET",
+          price_usdc: "0.0001",
+          description: "Poll the status of an in-progress swap.",
+          example_request: { id: "swap-83921" },
+          why_pay: "Cheap status polling for a live swap.",
+        },
+        {
+          name: "bazaar_accept",
+          endpoint: "POST /api/v1/bazaar/accept",
+          method: "POST",
+          price_usdc: "0.005",
+          description: "Accept a received quote for your broadcast intent, finalizing the cross-chain HTLC handshake. Requires secret_hash = sha256(preimage) as a 64-char lowercase hex string, generated and kept by the caller (the server never sees the preimage).",
+          example_request: {
+            intent_id: "int-83921",
+            quote_id: "q-1042",
+            secret_hash: "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
+          },
+          why_pay: "Commits the deal: locks the HTLC and closes the negotiation with the counterparty agent.",
+        },
+        {
+          name: "cash_request_status",
+          endpoint: "GET /api/v1/cash/request/:id",
+          method: "GET",
+          price_usdc: "0.0001",
+          description: "Poll the status of a cash request (merchant, MXN amount, HTLC tx hash, expiry).",
+          example_request: { id: "mcr-1a2b3c4d" },
+          why_pay: "Exposes sensitive request detail behind payment; request IDs are short and enumerable, so this is deliberately gated (SEC-03).",
         },
       ],
       skill_url: `${BASE_URL}/skill.md`,
