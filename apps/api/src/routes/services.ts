@@ -12,6 +12,19 @@ export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
   // it must not be advertised as an active priced service.
   const reputationEnabled = process.env.MICOPAY_CASH_NETWORK_ENABLED === "true";
 
+  // Which chains the 402 challenge will actually offer. Mirrors the same two
+  // conditions requirePayment() uses (`X402_ACCEPT_CHAINS`, and a configured
+  // PLATFORM_BASE_ADDRESS for Base), so the catalog cannot advertise a chain
+  // the challenge never lists — the catalog's whole job is matching the routes.
+  const acceptChains = (process.env.X402_ACCEPT_CHAINS ?? "stellar")
+    .split(",")
+    .map((c) => c.trim().toLowerCase())
+    .filter(Boolean);
+  const paymentNetworks = [
+    ...(acceptChains.includes("stellar") ? ["stellar"] : []),
+    ...(acceptChains.includes("base") && process.env.PLATFORM_BASE_ADDRESS ? ["base"] : []),
+  ];
+
   /**
    * GET /api/v1/services
    * FREE — agent service discovery
@@ -23,8 +36,8 @@ export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
       tagline: "The first API that gives AI agents access to physical cash in Mexico",
       payment_method: "x402",
       payment_asset: "USDC",
-      payment_network: "stellar", // kept for older integrations reading a single value
-      payment_networks: ["stellar", "base"], // every priced endpoint below accepts both — same requirePayment() middleware
+      payment_network: paymentNetworks[0] ?? "stellar", // kept for older integrations reading a single value
+      payment_networks: paymentNetworks, // what the 402 challenge will offer on every priced endpoint below
       services: [
         {
           name: "cash_agents",

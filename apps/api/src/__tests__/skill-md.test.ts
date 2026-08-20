@@ -46,6 +46,24 @@ describe("GET /api/v1/services catalog matches the priced routes", () => {
     }
   });
 
+  it("never advertises base as a payment network unless Base is configured", async () => {
+    const app = await createApp();
+    try {
+      const res = await app.inject({ method: "GET", url: "/api/v1/services" });
+      const body = res.json() as { payment_networks: string[]; payment_network: string };
+
+      expect(body.payment_networks).toContain("stellar");
+      // requirePayment() only puts a Base entry in the 402 challenge when
+      // PLATFORM_BASE_ADDRESS is set, so the catalog must not promise it either.
+      if (!process.env.PLATFORM_BASE_ADDRESS) {
+        expect(body.payment_networks).not.toContain("base");
+      }
+      expect(body.payment_networks).toContain(body.payment_network);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("does not advertise a chargeable price for reputation while it returns 501 (disabled by default)", async () => {
     const app = await createApp();
     try {

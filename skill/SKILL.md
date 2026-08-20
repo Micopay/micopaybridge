@@ -6,7 +6,8 @@ exchange, settle it on two different chains, and neither can run off with the ot
 funds — no custodian, no account, no prior registration. It also bridges USDC to
 physical cash in Mexico.
 
-Every priced call is metered with **x402** and paid in **USDC** on **Stellar or Base**.
+Every priced call is metered with **x402** and paid in **USDC**, on Stellar and — where the
+deployment enables it — on Base.
 
 ## How payment works (x402)
 
@@ -17,19 +18,30 @@ Every priced call is metered with **x402** and paid in **USDC** on **Stellar or 
    {
      "x402Version": 1,
      "accepts": [
-       { "scheme": "exact", "network": "stellar", "maxAmountRequired": "0.01",
-         "resource": "swap_plan", "payTo": "<platform G-address>", "asset": "<USDC issuer>" },
-       { "scheme": "exact", "network": "base", "maxAmountRequired": "10000",
-         "resource": "swap_plan", "payTo": "<platform 0x-address>", "asset": "<Base USDC>" }
+       { "scheme": "stellar-usdc", "network": "testnet", "maxAmountRequired": "0.01",
+         "resource": "swap_plan", "description": "MicoPay swap_plan",
+         "payTo": "<platform G-address>", "asset": "<USDC issuer G-address>",
+         "maxTimeoutSeconds": 300 },
+       { "scheme": "exact", "network": "base-sepolia", "maxAmountRequired": "10000",
+         "resource": "swap_plan", "description": "MicoPay swap_plan",
+         "payTo": "<platform 0x-address>", "asset": "<Base USDC contract>",
+         "maxTimeoutSeconds": 300 }
      ]
    }
    ```
 
-   Pick either chain — the same endpoint accepts both.
+   Read the chain from each entry rather than assuming one: `accepts` lists only what
+   this deployment enables, so the Base entry is absent unless it is configured. The
+   `network` value follows the deployment too — `testnet` or `mainnet` on Stellar,
+   `base-sepolia` on Base. Stellar amounts are decimal USDC (`"0.01"`); Base amounts are
+   base units, 6 decimals (`"10000"` = 0.01 USDC). A sibling `challenge` object is also
+   present for MicoPay's own Stellar clients; new integrations should read `accepts`.
 
 2. Pay the stated `asset` to `payTo` for at least `maxAmountRequired`, then retry the
    request with an **`X-PAYMENT`** header carrying the signed payment (base64 XDR for
-   Stellar, base64 JSON for Base). On a valid payment the request proceeds.
+   Stellar, base64 JSON for Base). The server verifies destination, asset issuer and
+   amount, and rejects a payment already spent on another request. On a valid payment
+   the request proceeds.
 
 Free endpoints need no `X-PAYMENT` header.
 
