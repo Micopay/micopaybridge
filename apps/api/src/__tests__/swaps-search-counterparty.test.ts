@@ -36,6 +36,17 @@ describe("GET /api/v1/swaps/search: ninguna cifra de reputacion inventada", () =
     await app.ready();
   });
 
+  // El backoff vive en el modulo: sin resetear, un test contamina al siguiente.
+  async function appNueva(env: Record<string, string> = {}) {
+    for (const [k, v] of Object.entries(env)) process.env[k] = v;
+    vi.resetModules();
+    const { swapRoutes } = await import("../routes/swaps.js");
+    const nueva = Fastify();
+    await nueva.register(swapRoutes);
+    await nueva.ready();
+    return nueva;
+  }
+
   afterAll(async () => {
     await app.close();
     globalThis.fetch = fetchOriginal;
@@ -100,6 +111,54 @@ describe("GET /api/v1/swaps/search: ninguna cifra de reputacion inventada", () =
     expect(body.counterparties[0].source).toBe("demo");
     expect(body.counterparties[0].available_amount_source).toBe("estimate");
     expect(body.reputation_source).toBe("agent_history");
+  });
+
+  it("con la base caida no se reintenta en cada busqueda pagada", async () => {
+    getAgentHistory.mockRejectedValue(new Error("ECONNREFUSED"));
+    const nueva = await appNueva({ REPUTATION_DB_RETRY_MS: "30000" });
+    getAgentHistory.mockClear();
+
+    for (let i = 0; i < 20; i++) {
+      const r = await nueva.inject({ method: "GET", url: "/api/v1/swaps/search", headers: PAGO });
+      expect(r.statusCode).toBe(200);
+    }
+
+    // Antes: 20 busquedas = 20 intentos de conexion, cada uno hasta 5 s por el
+    // connectionTimeoutMillis de schema.ts.
+    expect(getAgentHistory).toHaveBeenCalledTimes(1);
+    await nueva.close();
+    delete process.env.REPUTATION_DB_RETRY_MS;
+  });
+
+  it("una base lenta no cuelga la busqueda: hay tope de espera", async () => {
+    // Nunca resuelve: es el caso que peor duele, la base que no contesta ni
+    // rechaza.
+    getAgentHistory.mockImplementation(() => new Promise(() => {}) as never);
+    const nueva = await appNueva({ REPUTATION_LOOKUP_TIMEOUT_MS: "150" });
+
+    const t0 = Date.now();
+    const r = await nueva.inject({ method: "GET", url: "/api/v1/swaps/search", headers: PAGO });
+    const tardo = Date.now() - t0;
+
+    expect(r.statusCode).toBe(200);
+    expect(JSON.parse(r.body).counterparties[0].completion_rate).toBeNull();
+    expect(tardo).toBeLessThan(1_000);
+    await nueva.close();
+    delete process.env.REPUTATION_LOOKUP_TIMEOUT_MS;
+  });
+
+  it("una direccion sin historial NO abre la ventana de backoff", async () => {
+    const nueva = await appNueva();
+    getAgentHistory.mockResolvedValue(null);
+
+    await nueva.inject({ method: "GET", url: "/api/v1/swaps/search", headers: PAGO });
+    getAgentHistory.mockClear();
+    await nueva.inject({ method: "GET", url: "/api/v1/swaps/search", headers: PAGO });
+
+    // "sin fila" es una respuesta legitima, no un fallo de base: la siguiente
+    // busqueda vuelve a consultar.
+    expect(getAgentHistory).toHaveBeenCalledTimes(1);
+    await nueva.close();
   });
 
   it("el rate sigue viniendo de Horizon y no lo toca este cambio", async () => {

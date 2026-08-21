@@ -122,6 +122,67 @@ const DEMO_AGENT_ADDRESS = process.env.DEMO_AGENT_PUBLIC_KEY ?? "GDEMOAGENTADDRE
 const DEMO_AVAILABLE_AMOUNT = process.env.DEMO_COUNTERPARTY_AVAILABLE_USDC ?? "10000";
 
 /**
+ * Lectura de reputacion acotada en tiempo y con backoff.
+ *
+ * /swaps/search es un endpoint de pago que antes no tocaba la base. Leer
+ * agent_history lo ata a Postgres, y sin freno eso significa dos cosas malas
+ * medidas en el codigo: `schema.ts` conecta con `connectionTimeoutMillis` de
+ * 5 s por defecto, asi que una base que no contesta anade 5 s a CADA busqueda
+ * pagada; y con la base caida, cada peticion vuelve a intentar conectar.
+ *
+ * Mismo patron que ensureX402Initialized() y ensureBazaarInitialized(): tras
+ * un fallo no se reintenta hasta pasado el intervalo, y mientras tanto se
+ * responde sin reputacion — que es exactamente lo mismo que se responde para
+ * una direccion sin historial. La busqueda no depende de la base para existir.
+ */
+const REPUTACION_TIMEOUT_MS = Math.max(Number(process.env.REPUTATION_LOOKUP_TIMEOUT_MS ?? 1_000), 100);
+const REPUTACION_DB_RETRY_MS = Math.max(Number(process.env.REPUTATION_DB_RETRY_MS ?? 30_000), 1_000);
+let ultimoFalloReputacion = 0;
+
+type HistorialMinimo = { swaps_completed: number; broadcasts: number };
+
+async function leerHistorialAcotado(address: string): Promise<HistorialMinimo | null> {
+  const ahora = Date.now();
+  if (ultimoFalloReputacion !== 0 && ahora - ultimoFalloReputacion < REPUTACION_DB_RETRY_MS) {
+    return null; // ventana de backoff: ni se intenta
+  }
+
+  // La promesa perdedora sigue viva, pero nadie la espera: lo que se acota es
+  // lo que el que paga espera, no lo que hace el pool por dentro.
+  //
+  // El centinela importa: "no hay fila para esa direccion" es una respuesta
+  // legitima y rapida, no un fallo de base. Si las dos devolvieran null, un
+  // agente sin historial abriria la ventana de backoff y dejaria sin
+  // reputacion a los demas durante 30 s.
+  const TIMEOUT = Symbol("timeout");
+  const conTope = new Promise<typeof TIMEOUT>((resolve) => {
+    const t = setTimeout(() => resolve(TIMEOUT), REPUTACION_TIMEOUT_MS);
+    // No mantener vivo el proceso por un timer de lectura.
+    if (typeof t === "object" && "unref" in t) t.unref();
+  });
+
+  try {
+    const historial = await Promise.race([getAgentHistory(address), conTope]);
+    if (historial === TIMEOUT) {
+      ultimoFalloReputacion = Date.now();
+      console.warn(
+        `[swaps] reputacion no contesto en ${REPUTACION_TIMEOUT_MS}ms (siguiente intento en ${REPUTACION_DB_RETRY_MS / 1000}s)`,
+      );
+      return null;
+    }
+    ultimoFalloReputacion = 0;
+    return historial;
+  } catch (err) {
+    ultimoFalloReputacion = Date.now();
+    console.warn(
+      `[swaps] lectura de reputacion fallida (siguiente intento en ${REPUTACION_DB_RETRY_MS / 1000}s):`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+/**
  * completion_rate y swaps_completed salen de agent_history, que es la fuente
  * real de la reputacion de este mercado. Si esa direccion no tiene historial,
  * la respuesta dice null: inventar 0.98 es peor que no responder, porque el
@@ -130,13 +191,7 @@ const DEMO_AVAILABLE_AMOUNT = process.env.DEMO_COUNTERPARTY_AVAILABLE_USDC ?? "1
 async function buildCounterparties(sell: string, buy: string, amount?: string): Promise<CounterpartyInfo[]> {
   const baseRate = await fetchRateFromHorizon(sell, buy);
 
-  let history: { swaps_completed: number; broadcasts: number } | null = null;
-  try {
-    history = await getAgentHistory(DEMO_AGENT_ADDRESS);
-  } catch {
-    // Base caida: sin historial es null, no un numero de relleno.
-    history = null;
-  }
+  const history = await leerHistorialAcotado(DEMO_AGENT_ADDRESS);
 
   const completionRate = history && history.broadcasts > 0
     ? parseFloat((history.swaps_completed / history.broadcasts).toFixed(3))
