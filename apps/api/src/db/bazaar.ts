@@ -162,8 +162,25 @@ export async function getQuotesForIntent(intentId: string): Promise<BazaarQuoteR
   );
 }
 
+/**
+ * pg devuelve los NUMERIC como string para no perder precision — el mismo
+ * motivo por el que lib/reputation-source.ts tiene su helper `num()`. Aqui no
+ * se estaba aplicando, y `volume_usdc` viajaba como string debajo de un tipo
+ * que promete number.
+ *
+ * Comprobado contra PostgreSQL 16 real, no deducido: con 4500.00 en la fila,
+ * `upsertAgentHistory(addr, { volume_usdc: 42 })` hacia `"4500.00" + 42 =
+ * "4500.0042"`, que DECIMAL(20,2) redondea de vuelta a 4500.00. Cada
+ * incremento de volumen se perdia entero y sin ruido.
+ */
+export function normalizarHistorial(row: AgentHistoryRow | null): AgentHistoryRow | null {
+  if (!row) return null;
+  return { ...row, volume_usdc: Number(row.volume_usdc) || 0 };
+}
+
 export async function getAgentHistory(address: string): Promise<AgentHistoryRow | null> {
-  return getOne<AgentHistoryRow>('SELECT * FROM agent_history WHERE agent_address = $1', [address]);
+  const row = await getOne<AgentHistoryRow>('SELECT * FROM agent_history WHERE agent_address = $1', [address]);
+  return normalizarHistorial(row);
 }
 
 export async function upsertAgentHistory(
@@ -341,7 +358,8 @@ export async function getBazaarStats(): Promise<BazaarStats> {
   const executedIntents = parseInt(statusCounts.find(r => r.status === "executed")?.count ?? "0", 10);
   const expiredIntents = parseInt(statusCounts.find(r => r.status === "expired")?.count ?? "0", 10);
 
-  const topAgents: AgentStats[] = agentStats.map(agent => {
+  const topAgents: AgentStats[] = agentStats.map(fila => {
+    const agent = { ...fila, volume_usdc: Number(fila.volume_usdc) || 0 };
     const rate = agent.broadcasts > 0 ? agent.swaps_completed / agent.broadcasts : 0;
     const tier = getAgentTierStatic(agent.swaps_completed, agent.broadcasts);
     return {
