@@ -450,7 +450,19 @@ export async function agentRoutes(fastify: FastifyInstance): Promise<void> {
 
       const plan = planStore.get(body.plan_id);
       if (!plan) {
-        return reply.status(404).send({ error: "plan_id not found — call /api/v1/swaps/plan first" });
+        // Venció y nunca existió no son lo mismo para quien pagó por el plan:
+        // uno se arregla creando otro, el otro es un bug nuestro. Contestar
+        // 404 a los dos era la parte cara del asunto (#17).
+        if (planStore.isExpired(body.plan_id)) {
+          return reply.status(410).send({
+            error: "plan_expired",
+            message: "This plan has expired. Please create a new plan.",
+          });
+        }
+        return reply.status(404).send({
+          error: "plan_not_found",
+          message: "No plan found for this plan_id — call /api/v1/swaps/plan first.",
+        });
       }
 
       // Validate the plan before execution (double check!)

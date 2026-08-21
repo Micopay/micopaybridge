@@ -17,7 +17,7 @@ import { swapRoutes } from "./routes/swaps.js";
 import { cashRoutes } from "./routes/cash.js";
 import { fundRoutes } from "./routes/fund.js";
 import { recoverInFlightSwaps, startRefundRetryLoop } from "./lib/recovery.js";
-import { pendingRefunds } from "./lib/swapStore.js";
+import { pendingRefunds, planStore } from "./lib/swapStore.js";
 import { runMigrations } from "./db/migrator.js";
 import { config } from "./config.js";
 
@@ -208,6 +208,10 @@ async function start() {
   const app = await createApp();
   await arrancarMigraciones();
   await arrancarRecuperacion();
+
+  // Los planes vencidos no le sirven a nadie y el directorio es compartido:
+  // sin esto crece para siempre (#17).
+  planStore.cleanup();
 
   // Log security configuration on startup
   console.log(`[SECURITY] NODE_ENV: ${NODE_ENV}`);
