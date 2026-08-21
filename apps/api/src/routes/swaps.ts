@@ -3,6 +3,7 @@ import { requirePayment } from "../middleware/x402.js";
 import type { CounterpartyInfo } from "@micopay/types";
 import { swapStore, pendingRefunds, TX_CHAIN, type SwapState } from "../lib/swapStore.js";
 import { refundSwap } from "../lib/soroban.js";
+import { getAgentHistory } from "../db/bazaar.js";
 
 const CONTRACT_A = process.env.ATOMIC_SWAP_CONTRACT_A ?? "CCDOUXIXSFXT2HTJAJGFNUJN6CKCYX2M6AL2BHHPEF6ISNHP2BGLS4KX";
 
@@ -114,18 +115,49 @@ async function fetchRateFromHorizon(sell: string, buy: string): Promise<number> 
 // rechazaba cualquier plan real con "Invalid counterparty_address".
 const DEMO_AGENT_ADDRESS = process.env.DEMO_AGENT_PUBLIC_KEY ?? "GDEMOAGENTADDRESSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
+// BRIDGE-09: available_amount decide si la contraparte se ofrece o no. Como
+// no hay forma de medir el inventario de un agente todavia, el techo es
+// configuracion declarada como estimacion, no un literal escondido que parece
+// medido.
+const DEMO_AVAILABLE_AMOUNT = process.env.DEMO_COUNTERPARTY_AVAILABLE_USDC ?? "10000";
+
+/**
+ * completion_rate y swaps_completed salen de agent_history, que es la fuente
+ * real de la reputacion de este mercado. Si esa direccion no tiene historial,
+ * la respuesta dice null: inventar 0.98 es peor que no responder, porque el
+ * campo inventado es justo el de confiabilidad y el agente paga por leerlo.
+ */
 async function buildCounterparties(sell: string, buy: string, amount?: string): Promise<CounterpartyInfo[]> {
   const baseRate = await fetchRateFromHorizon(sell, buy);
-  return [
+
+  let history: { swaps_completed: number; broadcasts: number } | null = null;
+  try {
+    history = await getAgentHistory(DEMO_AGENT_ADDRESS);
+  } catch {
+    // Base caida: sin historial es null, no un numero de relleno.
+    history = null;
+  }
+
+  const completionRate = history && history.broadcasts > 0
+    ? parseFloat((history.swaps_completed / history.broadcasts).toFixed(3))
+    : null;
+
+  const counterparties: CounterpartyInfo[] = [
     {
       address: DEMO_AGENT_ADDRESS,
       chain: "stellar",
-      completion_rate: 0.98,
-      avg_time_seconds: 45,
-      available_amount: "10000",
+      completion_rate: completionRate,
+      swaps_completed: history?.swaps_completed ?? null,
+      // No se mide en ningun lado todavia. null hasta que exista.
+      avg_time_seconds: null,
+      available_amount: DEMO_AVAILABLE_AMOUNT,
+      available_amount_source: "estimate",
       rate: (baseRate * 0.999).toFixed(4), // best rate (0.1% spread)
+      source: "demo",
     },
-  ].filter((c) => !amount || parseFloat(c.available_amount) >= parseFloat(amount));
+  ];
+
+  return counterparties.filter((c) => !amount || parseFloat(c.available_amount) >= parseFloat(amount));
 }
 
 export async function swapRoutes(fastify: FastifyInstance): Promise<void> {
@@ -157,6 +189,8 @@ export async function swapRoutes(fastify: FastifyInstance): Promise<void> {
         buy_asset: buy,
         market_rate: marketRate.toFixed(4),
         rate_source: "horizon-testnet",
+        // La misma honestidad que ya tenia `rate`, para el resto de los campos.
+        reputation_source: "agent_history",
         total_results: counterparties.length,
         payer: request.payerAddress,
       });

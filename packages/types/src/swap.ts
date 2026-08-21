@@ -58,8 +58,18 @@ export interface SwapResult {
 export interface CounterpartyInfo {
   address: string;
   chain: string;
-  completion_rate: number;
-  avg_time_seconds: number;
+  /**
+   * Sale de agent_history. null cuando esa direccion no tiene historial en
+   * este mercado: un agente que decide si bloquear fondos contra un extraño
+   * tiene que poder distinguir "sin historial" de un numero por defecto.
+   */
+  completion_rate: number | null;
+  swaps_completed: number | null;
+  avg_time_seconds: number | null;
   available_amount: string;
+  /** "measured" si available_amount viene de algo real; "estimate" si no. */
+  available_amount_source: "measured" | "estimate";
   rate: string;
+  /** "demo" marca una contraparte sembrada, no un agente que se anuncio solo. */
+  source: "demo" | "bazaar";
 }
