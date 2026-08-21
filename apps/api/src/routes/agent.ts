@@ -36,7 +36,11 @@ contrato HTLC en testnet para el demo).
 4. El timeout del initiator SIEMPRE debe ser mayor al del counterparty.
    Regla mínima: initiator_ledgers = counterparty_ledgers * 2
 5. Incluye siempre el fee total estimado en el plan.
-6. risk_level = "high" si completion_rate < 0.85.
+6. risk_level = "high" si completion_rate < 0.85, y TAMBIEN si completion_rate
+   es null: null significa que esa contraparte no tiene historial en este
+   mercado, o que no se pudo leer (mira reputation_source en la respuesta de
+   search_swaps). Sin senal de confianza, el riesgo es alto — no lo trates
+   como un cero ni como un aprobado.
 
 ## Assets soportados
 - Stellar: USDC, XLM, MXNe

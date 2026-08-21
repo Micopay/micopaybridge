@@ -106,11 +106,48 @@ describe("GET /api/v1/swaps/search: ninguna cifra de reputacion inventada", () =
   });
 
   it("la entrada sembrada va marcada como demo y su inventario como estimacion", async () => {
-    const { body } = await search();
+    // App nueva a proposito: el backoff vive en el modulo, y el test anterior
+    // deja la ventana abierta. Con la `app` compartida, reputation_source
+    // diria "unavailable" — correcto, pero no es lo que se mide aqui.
+    const nueva = await appNueva();
+    const r = await nueva.inject({ method: "GET", url: "/api/v1/swaps/search", headers: PAGO });
+    const body = JSON.parse(r.body);
 
     expect(body.counterparties[0].source).toBe("demo");
     expect(body.counterparties[0].available_amount_source).toBe("estimate");
     expect(body.reputation_source).toBe("agent_history");
+    await nueva.close();
+  });
+
+  it("si no se pudo leer agent_history, reputation_source lo dice", async () => {
+    // "sin historial" y "no pudimos mirar" son respuestas distintas para quien
+    // paga por la senal de confianza. Antes las dos decian "agent_history".
+    getAgentHistory.mockRejectedValue(new Error("ECONNREFUSED"));
+    const nueva = await appNueva();
+
+    const r = await nueva.inject({ method: "GET", url: "/api/v1/swaps/search", headers: PAGO });
+    const body = JSON.parse(r.body);
+
+    expect(body.reputation_source).toBe("unavailable");
+    expect(body.counterparties[0].completion_rate).toBeNull();
+    await nueva.close();
+  });
+
+  it("un inventario invalido en el entorno no vacia la busqueda", async () => {
+    // parseFloat("mucho") >= parseFloat(amount) es false siempre: con la
+    // variable mal puesta, el filtro se comia la unica contraparte y la
+    // busqueda pagada devolvia cero resultados sin explicar nada.
+    const nueva = await appNueva({ DEMO_COUNTERPARTY_AVAILABLE_USDC: "mucho" });
+
+    const r = await nueva.inject({
+      method: "GET", url: "/api/v1/swaps/search?amount=100", headers: PAGO,
+    });
+    const body = JSON.parse(r.body);
+
+    expect(body.counterparties).toHaveLength(1);
+    expect(body.counterparties[0].available_amount).toBe("10000");
+    await nueva.close();
+    delete process.env.DEMO_COUNTERPARTY_AVAILABLE_USDC;
   });
 
   it("con la base caida no se reintenta en cada busqueda pagada", async () => {

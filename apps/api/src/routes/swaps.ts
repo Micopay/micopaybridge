@@ -119,7 +119,25 @@ const DEMO_AGENT_ADDRESS = process.env.DEMO_AGENT_PUBLIC_KEY ?? "GDEMOAGENTADDRE
 // no hay forma de medir el inventario de un agente todavia, el techo es
 // configuracion declarada como estimacion, no un literal escondido que parece
 // medido.
-const DEMO_AVAILABLE_AMOUNT = process.env.DEMO_COUNTERPARTY_AVAILABLE_USDC ?? "10000";
+const DEMO_AVAILABLE_AMOUNT = montoDesdeEntorno(
+  process.env.DEMO_COUNTERPARTY_AVAILABLE_USDC, "10000", "DEMO_COUNTERPARTY_AVAILABLE_USDC",
+);
+
+/**
+ * Igual que msDesdeEntorno, por el mismo motivo: este valor no solo se
+ * publica, tambien filtra. `parseFloat("mucho") >= parseFloat(amount)` es
+ * false siempre, asi que un typo en la variable no degrada la respuesta — la
+ * vacia, y la busqueda pagada devuelve cero contrapartes sin decir por que.
+ */
+export function montoDesdeEntorno(raw: string | undefined, porDefecto: string, nombre: string): string {
+  if (raw === undefined || raw.trim() === "") return porDefecto;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.warn(`[swaps] ${nombre}="${raw}" no es un monto valido; se usa ${porDefecto}`);
+    return porDefecto;
+  }
+  return raw.trim();
+}
 
 /**
  * Lectura de reputacion acotada en tiempo y con backoff.
@@ -168,10 +186,18 @@ let ultimoFalloReputacion = 0;
 
 type HistorialMinimo = { swaps_completed: number; broadcasts: number };
 
-async function leerHistorialAcotado(address: string): Promise<HistorialMinimo | null> {
+/**
+ * `disponible: false` significa que no se pudo leer la fuente — fallo, tope de
+ * espera vencido, o ventana de backoff abierta. Es distinto de leerla y que no
+ * haya fila, y la respuesta tiene que poder distinguirlo: si no, el agente que
+ * paga no sabe si esta contraparte no tiene historial o si es que no miramos.
+ */
+type LecturaReputacion = { historial: HistorialMinimo | null; disponible: boolean };
+
+async function leerHistorialAcotado(address: string): Promise<LecturaReputacion> {
   const ahora = Date.now();
   if (ultimoFalloReputacion !== 0 && ahora - ultimoFalloReputacion < REPUTACION_DB_RETRY_MS) {
-    return null; // ventana de backoff: ni se intenta
+    return { historial: null, disponible: false }; // ventana de backoff: ni se intenta
   }
 
   // La promesa perdedora sigue viva, pero nadie la espera: lo que se acota es
@@ -195,17 +221,17 @@ async function leerHistorialAcotado(address: string): Promise<HistorialMinimo | 
       console.warn(
         `[swaps] reputacion no contesto en ${REPUTACION_TIMEOUT_MS}ms (siguiente intento en ${REPUTACION_DB_RETRY_MS / 1000}s)`,
       );
-      return null;
+      return { historial: null, disponible: false };
     }
     ultimoFalloReputacion = 0;
-    return historial;
+    return { historial, disponible: true };
   } catch (err) {
     ultimoFalloReputacion = Date.now();
     console.warn(
       `[swaps] lectura de reputacion fallida (siguiente intento en ${REPUTACION_DB_RETRY_MS / 1000}s):`,
       err instanceof Error ? err.message : err,
     );
-    return null;
+    return { historial: null, disponible: false };
   }
 }
 
@@ -215,10 +241,16 @@ async function leerHistorialAcotado(address: string): Promise<HistorialMinimo | 
  * la respuesta dice null: inventar 0.98 es peor que no responder, porque el
  * campo inventado es justo el de confiabilidad y el agente paga por leerlo.
  */
-async function buildCounterparties(sell: string, buy: string, amount?: string): Promise<CounterpartyInfo[]> {
+type BusquedaContrapartes = {
+  counterparties: CounterpartyInfo[];
+  /** "agent_history" si se leyo la fuente; "unavailable" si no se pudo. */
+  reputation_source: "agent_history" | "unavailable";
+};
+
+async function buildCounterparties(sell: string, buy: string, amount?: string): Promise<BusquedaContrapartes> {
   const baseRate = await fetchRateFromHorizon(sell, buy);
 
-  const history = await leerHistorialAcotado(DEMO_AGENT_ADDRESS);
+  const { historial: history, disponible } = await leerHistorialAcotado(DEMO_AGENT_ADDRESS);
 
   const completionRate = history && history.broadcasts > 0
     ? parseFloat((history.swaps_completed / history.broadcasts).toFixed(3))
@@ -239,7 +271,10 @@ async function buildCounterparties(sell: string, buy: string, amount?: string): 
     },
   ];
 
-  return counterparties.filter((c) => !amount || parseFloat(c.available_amount) >= parseFloat(amount));
+  return {
+    counterparties: counterparties.filter((c) => !amount || parseFloat(c.available_amount) >= parseFloat(amount)),
+    reputation_source: disponible ? "agent_history" : "unavailable",
+  };
 }
 
 export async function swapRoutes(fastify: FastifyInstance): Promise<void> {
@@ -260,7 +295,7 @@ export async function swapRoutes(fastify: FastifyInstance): Promise<void> {
       const sell = (sell_asset ?? "USDC").toUpperCase();
       const buy  = (buy_asset  ?? "XLM").toUpperCase();
 
-      const [counterparties, marketRate] = await Promise.all([
+      const [{ counterparties, reputation_source }, marketRate] = await Promise.all([
         buildCounterparties(sell, buy, amount),
         fetchRateFromHorizon(sell, buy),
       ]);
@@ -271,8 +306,10 @@ export async function swapRoutes(fastify: FastifyInstance): Promise<void> {
         buy_asset: buy,
         market_rate: marketRate.toFixed(4),
         rate_source: "horizon-testnet",
-        // La misma honestidad que ya tenia `rate`, para el resto de los campos.
-        reputation_source: "agent_history",
+        // La misma honestidad que ya tenia `rate`, para el resto de los campos:
+        // "unavailable" cuando no se pudo leer agent_history, que no es lo
+        // mismo que leerla y que la direccion no tenga historial.
+        reputation_source,
         total_results: counterparties.length,
         payer: request.payerAddress,
       });
