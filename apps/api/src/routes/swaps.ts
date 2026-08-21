@@ -135,8 +135,35 @@ const DEMO_AVAILABLE_AMOUNT = process.env.DEMO_COUNTERPARTY_AVAILABLE_USDC ?? "1
  * responde sin reputacion — que es exactamente lo mismo que se responde para
  * una direccion sin historial. La busqueda no depende de la base para existir.
  */
-const REPUTACION_TIMEOUT_MS = Math.max(Number(process.env.REPUTATION_LOOKUP_TIMEOUT_MS ?? 1_000), 100);
-const REPUTACION_DB_RETRY_MS = Math.max(Number(process.env.REPUTATION_DB_RETRY_MS ?? 30_000), 1_000);
+/**
+ * Milisegundos desde el entorno, validados ANTES de comparar.
+ *
+ * `Math.max(Number(basura), piso)` no valida: devuelve NaN, y NaN se lleva por
+ * delante las dos guardas de aqui abajo. Medido: con
+ * REPUTATION_DB_RETRY_MS="medio minuto", 20 busquedas con la base caida daban
+ * 20 conexiones (`ahora - ultimo < NaN` es siempre false); con
+ * REPUTATION_LOOKUP_TIMEOUT_MS invalido, `setTimeout(fn, NaN)` dispara al
+ * instante y la reputacion se apaga en silencio contra una base sana.
+ *
+ * Un valor que no parsea avisa y cae al default: apagar una proteccion por un
+ * typo es peor que ignorar el typo.
+ */
+export function msDesdeEntorno(raw: string | undefined, porDefecto: number, piso: number, nombre: string): number {
+  if (raw === undefined || raw.trim() === "") return porDefecto;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    console.warn(`[swaps] ${nombre}="${raw}" no es un numero valido; se usa ${porDefecto}ms`);
+    return porDefecto;
+  }
+  return Math.max(parsed, piso);
+}
+
+const REPUTACION_TIMEOUT_MS = msDesdeEntorno(
+  process.env.REPUTATION_LOOKUP_TIMEOUT_MS, 1_000, 100, "REPUTATION_LOOKUP_TIMEOUT_MS",
+);
+const REPUTACION_DB_RETRY_MS = msDesdeEntorno(
+  process.env.REPUTATION_DB_RETRY_MS, 30_000, 1_000, "REPUTATION_DB_RETRY_MS",
+);
 let ultimoFalloReputacion = 0;
 
 type HistorialMinimo = { swaps_completed: number; broadcasts: number };

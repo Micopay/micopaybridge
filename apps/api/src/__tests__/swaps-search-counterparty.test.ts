@@ -165,6 +165,55 @@ describe("GET /api/v1/swaps/search: ninguna cifra de reputacion inventada", () =
     await nueva.close();
   });
 
+  it("un intervalo de reintento invalido no desactiva el backoff", async () => {
+    // `Math.max(Number("medio minuto"), 1000)` daba NaN, y `ahora - ultimo <
+    // NaN` es siempre false: 20 busquedas = 20 conexiones con la base caida.
+    getAgentHistory.mockRejectedValue(new Error("ECONNREFUSED"));
+    const nueva = await appNueva({ REPUTATION_DB_RETRY_MS: "medio minuto" });
+    getAgentHistory.mockClear();
+
+    for (let i = 0; i < 20; i++) {
+      await nueva.inject({ method: "GET", url: "/api/v1/swaps/search", headers: PAGO });
+    }
+
+    expect(getAgentHistory).toHaveBeenCalledTimes(1);
+    await nueva.close();
+    delete process.env.REPUTATION_DB_RETRY_MS;
+  });
+
+  it("un tope de espera invalido no apaga la reputacion", async () => {
+    // setTimeout(fn, NaN) dispara al instante: contra una base sana, la
+    // reputacion salia null y ademas se abria la ventana de backoff.
+    getAgentHistory.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+      return {
+        agent_address: "G", broadcasts: 10, swaps_completed: 7, swaps_cancelled: 3,
+        volume_usdc: 900, first_seen: "2026-01-01T00:00:00Z", last_active: "2026-08-19T00:00:00Z",
+      } as never;
+    });
+    const nueva = await appNueva({ REPUTATION_LOOKUP_TIMEOUT_MS: "un segundo" });
+
+    const r = await nueva.inject({ method: "GET", url: "/api/v1/swaps/search", headers: PAGO });
+
+    expect(JSON.parse(r.body).counterparties[0].completion_rate).toBe(0.7);
+    await nueva.close();
+    delete process.env.REPUTATION_LOOKUP_TIMEOUT_MS;
+  });
+
+  it("msDesdeEntorno: basura al default, valor bajo el piso al piso", async () => {
+    const { msDesdeEntorno } = await import("../routes/swaps.js");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    expect(msDesdeEntorno("medio minuto", 30_000, 1_000, "X")).toBe(30_000);
+    expect(msDesdeEntorno("1e309", 30_000, 1_000, "X")).toBe(30_000);
+    expect(msDesdeEntorno("-5", 30_000, 1_000, "X")).toBe(30_000);
+    expect(msDesdeEntorno("", 30_000, 1_000, "X")).toBe(30_000);
+    expect(msDesdeEntorno(undefined, 30_000, 1_000, "X")).toBe(30_000);
+    expect(msDesdeEntorno("0", 30_000, 1_000, "X")).toBe(1_000);
+    expect(msDesdeEntorno("5000", 30_000, 1_000, "X")).toBe(5_000);
+    warn.mockRestore();
+  });
+
   it("el rate sigue viniendo de Horizon y no lo toca este cambio", async () => {
     const { body } = await search();
 
