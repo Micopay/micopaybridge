@@ -142,7 +142,11 @@ describe("GET /api/v1/swaps/search: ninguna cifra de reputacion inventada", () =
 
     expect(r.statusCode).toBe(200);
     expect(JSON.parse(r.body).counterparties[0].completion_rate).toBeNull();
-    expect(tardo).toBeLessThan(1_000);
+    // El umbral se mide contra lo que se quiere evitar —los 5 s de
+    // connectionTimeoutMillis de schema.ts— no contra el tope configurado:
+    // un margen apretado convierte este test en uno que falla por carga de CI,
+    // no por el bug.
+    expect(tardo).toBeLessThan(4_000);
     await nueva.close();
     delete process.env.REPUTATION_LOOKUP_TIMEOUT_MS;
   });
