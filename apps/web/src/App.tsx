@@ -7,11 +7,12 @@ import ZKDemoTerminal from "./components/ZKDemoTerminal";
 import ReputationPanel from "./components/ReputationPanel";
 import BazaarFeed from "./components/BazaarFeed";
 import DemoBanner from "./components/DemoBanner";
+import ActivationPanel from "./components/ActivationPanel";
 import { useDemoStatus } from "./hooks/useDemoStatus";
 
 import { API_URL, APP_URL } from "./config";
 
-type Tab = "demo" | "swap" | "zk" | "bazaar" | "reputation" | "fund" | "services";
+type Tab = "demo" | "swap" | "zk" | "bazaar" | "reputation" | "fund" | "services" | "activate";
 
 // No login gate here on purpose: this dashboard is a human observer console
 // for the agent economy demo, not something an agent itself ever sees — the
@@ -85,6 +86,7 @@ export default function App() {
     { id: "reputation", label: "⭐ Reputación" },
     { id: "fund", label: "💚 Fund MicoPay" },
     { id: "services", label: "📡 Servicios" },
+    { id: "activate", label: "🔑 Activar" },
   ];
 
   return (
@@ -231,6 +233,7 @@ export default function App() {
         {activeTab === "reputation" && <ReputationPanel apiUrl={API_URL} />}
         {activeTab === "fund" && <FundWidget apiUrl={API_URL} />}
         {activeTab === "services" && <ServiceCatalog apiUrl={API_URL} />}
+        {activeTab === "activate" && <ActivationPanel apiUrl={API_URL} />}
       </main>
     </div>
   );
