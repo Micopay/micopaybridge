@@ -3,6 +3,7 @@ import { requirePayment } from "../middleware/x402.js";
 import type { CounterpartyInfo } from "@micopay/types";
 import { swapStore, pendingRefunds, TX_CHAIN, type SwapState } from "../lib/swapStore.js";
 import { refundSwap } from "../lib/soroban.js";
+import { getAgentHistory } from "../db/bazaar.js";
 
 const CONTRACT_A = process.env.ATOMIC_SWAP_CONTRACT_A ?? "CCDOUXIXSFXT2HTJAJGFNUJN6CKCYX2M6AL2BHHPEF6ISNHP2BGLS4KX";
 
@@ -114,18 +115,131 @@ async function fetchRateFromHorizon(sell: string, buy: string): Promise<number> 
 // rechazaba cualquier plan real con "Invalid counterparty_address".
 const DEMO_AGENT_ADDRESS = process.env.DEMO_AGENT_PUBLIC_KEY ?? "GDEMOAGENTADDRESSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
+// BRIDGE-09: available_amount decide si la contraparte se ofrece o no. Como
+// no hay forma de medir el inventario de un agente todavia, el techo es
+// configuracion declarada como estimacion, no un literal escondido que parece
+// medido.
+const DEMO_AVAILABLE_AMOUNT = process.env.DEMO_COUNTERPARTY_AVAILABLE_USDC ?? "10000";
+
+/**
+ * Lectura de reputacion acotada en tiempo y con backoff.
+ *
+ * /swaps/search es un endpoint de pago que antes no tocaba la base. Leer
+ * agent_history lo ata a Postgres, y sin freno eso significa dos cosas malas
+ * medidas en el codigo: `schema.ts` conecta con `connectionTimeoutMillis` de
+ * 5 s por defecto, asi que una base que no contesta anade 5 s a CADA busqueda
+ * pagada; y con la base caida, cada peticion vuelve a intentar conectar.
+ *
+ * Mismo patron que ensureX402Initialized() y ensureBazaarInitialized(): tras
+ * un fallo no se reintenta hasta pasado el intervalo, y mientras tanto se
+ * responde sin reputacion — que es exactamente lo mismo que se responde para
+ * una direccion sin historial. La busqueda no depende de la base para existir.
+ */
+/**
+ * Milisegundos desde el entorno, validados ANTES de comparar.
+ *
+ * `Math.max(Number(basura), piso)` no valida: devuelve NaN, y NaN se lleva por
+ * delante las dos guardas de aqui abajo. Medido: con
+ * REPUTATION_DB_RETRY_MS="medio minuto", 20 busquedas con la base caida daban
+ * 20 conexiones (`ahora - ultimo < NaN` es siempre false); con
+ * REPUTATION_LOOKUP_TIMEOUT_MS invalido, `setTimeout(fn, NaN)` dispara al
+ * instante y la reputacion se apaga en silencio contra una base sana.
+ *
+ * Un valor que no parsea avisa y cae al default: apagar una proteccion por un
+ * typo es peor que ignorar el typo.
+ */
+export function msDesdeEntorno(raw: string | undefined, porDefecto: number, piso: number, nombre: string): number {
+  if (raw === undefined || raw.trim() === "") return porDefecto;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    console.warn(`[swaps] ${nombre}="${raw}" no es un numero valido; se usa ${porDefecto}ms`);
+    return porDefecto;
+  }
+  return Math.max(parsed, piso);
+}
+
+const REPUTACION_TIMEOUT_MS = msDesdeEntorno(
+  process.env.REPUTATION_LOOKUP_TIMEOUT_MS, 1_000, 100, "REPUTATION_LOOKUP_TIMEOUT_MS",
+);
+const REPUTACION_DB_RETRY_MS = msDesdeEntorno(
+  process.env.REPUTATION_DB_RETRY_MS, 30_000, 1_000, "REPUTATION_DB_RETRY_MS",
+);
+let ultimoFalloReputacion = 0;
+
+type HistorialMinimo = { swaps_completed: number; broadcasts: number };
+
+async function leerHistorialAcotado(address: string): Promise<HistorialMinimo | null> {
+  const ahora = Date.now();
+  if (ultimoFalloReputacion !== 0 && ahora - ultimoFalloReputacion < REPUTACION_DB_RETRY_MS) {
+    return null; // ventana de backoff: ni se intenta
+  }
+
+  // La promesa perdedora sigue viva, pero nadie la espera: lo que se acota es
+  // lo que el que paga espera, no lo que hace el pool por dentro.
+  //
+  // El centinela importa: "no hay fila para esa direccion" es una respuesta
+  // legitima y rapida, no un fallo de base. Si las dos devolvieran null, un
+  // agente sin historial abriria la ventana de backoff y dejaria sin
+  // reputacion a los demas durante 30 s.
+  const TIMEOUT = Symbol("timeout");
+  const conTope = new Promise<typeof TIMEOUT>((resolve) => {
+    const t = setTimeout(() => resolve(TIMEOUT), REPUTACION_TIMEOUT_MS);
+    // No mantener vivo el proceso por un timer de lectura.
+    if (typeof t === "object" && "unref" in t) t.unref();
+  });
+
+  try {
+    const historial = await Promise.race([getAgentHistory(address), conTope]);
+    if (historial === TIMEOUT) {
+      ultimoFalloReputacion = Date.now();
+      console.warn(
+        `[swaps] reputacion no contesto en ${REPUTACION_TIMEOUT_MS}ms (siguiente intento en ${REPUTACION_DB_RETRY_MS / 1000}s)`,
+      );
+      return null;
+    }
+    ultimoFalloReputacion = 0;
+    return historial;
+  } catch (err) {
+    ultimoFalloReputacion = Date.now();
+    console.warn(
+      `[swaps] lectura de reputacion fallida (siguiente intento en ${REPUTACION_DB_RETRY_MS / 1000}s):`,
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+/**
+ * completion_rate y swaps_completed salen de agent_history, que es la fuente
+ * real de la reputacion de este mercado. Si esa direccion no tiene historial,
+ * la respuesta dice null: inventar 0.98 es peor que no responder, porque el
+ * campo inventado es justo el de confiabilidad y el agente paga por leerlo.
+ */
 async function buildCounterparties(sell: string, buy: string, amount?: string): Promise<CounterpartyInfo[]> {
   const baseRate = await fetchRateFromHorizon(sell, buy);
-  return [
+
+  const history = await leerHistorialAcotado(DEMO_AGENT_ADDRESS);
+
+  const completionRate = history && history.broadcasts > 0
+    ? parseFloat((history.swaps_completed / history.broadcasts).toFixed(3))
+    : null;
+
+  const counterparties: CounterpartyInfo[] = [
     {
       address: DEMO_AGENT_ADDRESS,
       chain: "stellar",
-      completion_rate: 0.98,
-      avg_time_seconds: 45,
-      available_amount: "10000",
+      completion_rate: completionRate,
+      swaps_completed: history?.swaps_completed ?? null,
+      // No se mide en ningun lado todavia. null hasta que exista.
+      avg_time_seconds: null,
+      available_amount: DEMO_AVAILABLE_AMOUNT,
+      available_amount_source: "estimate",
       rate: (baseRate * 0.999).toFixed(4), // best rate (0.1% spread)
+      source: "demo",
     },
-  ].filter((c) => !amount || parseFloat(c.available_amount) >= parseFloat(amount));
+  ];
+
+  return counterparties.filter((c) => !amount || parseFloat(c.available_amount) >= parseFloat(amount));
 }
 
 export async function swapRoutes(fastify: FastifyInstance): Promise<void> {
@@ -157,6 +271,8 @@ export async function swapRoutes(fastify: FastifyInstance): Promise<void> {
         buy_asset: buy,
         market_rate: marketRate.toFixed(4),
         rate_source: "horizon-testnet",
+        // La misma honestidad que ya tenia `rate`, para el resto de los campos.
+        reputation_source: "agent_history",
         total_results: counterparties.length,
         payer: request.payerAddress,
       });
