@@ -338,11 +338,12 @@ async function verifyPayment(xdrBase64: string, minAmountUsdc: string, service: 
   }
 
   // Validate time bounds: reject if maxTime has passed or if no time bounds are set
+  // In Stellar, maxTime=0 means unlimited (no upper bound), which we reject
   const nowSec = Math.floor(Date.now() / 1000);
-  if (!tx.timeBounds) {
+  if (!tx.timeBounds || tx.timeBounds.maxTime === 0) {
     throw new Error("Transaction has no time bounds (unlimited validity is not allowed)");
   }
-  if (tx.timeBounds.maxTime && tx.timeBounds.maxTime <= nowSec) {
+  if (tx.timeBounds.maxTime <= nowSec) {
     throw new Error(
       `Transaction expired: maxTime ${tx.timeBounds.maxTime} is in the past (now: ${nowSec})`
     );
