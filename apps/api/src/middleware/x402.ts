@@ -257,7 +257,7 @@ function build402Body(config: X402Config) {
       service: config.service,
       network: STELLAR_NETWORK.toLowerCase(),
       instructions:
-        "Send a Stellar USDC payment to pay_to with the specified memo. Include the signed XDR in X-PAYMENT header.",
+        "Send a Stellar USDC payment to pay_to with the specified memo and time bounds (maxTime must be within 5 minutes from now). Include the signed XDR in X-PAYMENT header.",
     },
   };
 }
@@ -286,6 +286,8 @@ const horizonServer = new Horizon.Server(HORIZON_URL);
  *
  * Checks:
  * - The XDR parses as a valid Stellar transaction
+ * - The transaction memo matches `micopay:<service>`
+ * - The transaction has valid time bounds and hasn't expired
  * - The transaction has at least one payment operation of the pinned USDC
  *   asset (code + issuer) to PLATFORM_ADDRESS, meeting the minimum amount
  * - The transaction hash has not been seen before (replay protection)
@@ -326,6 +328,25 @@ async function verifyPayment(xdrBase64: string, minAmountUsdc: string, service: 
 
   const payer = tx.source;
   const txHash = Buffer.from(tx.hash()).toString("hex");
+
+  // Validate memo matches the service being paid for
+  const expectedMemo = `micopay:${service}`;
+  if (!tx.memo || tx.memo.value !== expectedMemo) {
+    throw new Error(
+      `Invalid memo: expected "${expectedMemo}"${tx.memo && tx.memo.value ? `, got "${tx.memo.value}"` : ""}`
+    );
+  }
+
+  // Validate time bounds: reject if maxTime has passed or if no time bounds are set
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (!tx.timeBounds) {
+    throw new Error("Transaction has no time bounds (unlimited validity is not allowed)");
+  }
+  if (tx.timeBounds.maxTime && tx.timeBounds.maxTime <= nowSec) {
+    throw new Error(
+      `Transaction expired: maxTime ${tx.timeBounds.maxTime} is in the past (now: ${nowSec})`
+    );
+  }
 
   const alreadyUsed = useDatabase ? await isPaymentUsed(txHash) : usedTxHashes.has(txHash);
   if (alreadyUsed) {
