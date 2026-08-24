@@ -30,7 +30,7 @@ export interface BazaarQuoteRow {
 export interface AgentHistoryRow {
   agent_address: string;
   broadcasts: number;
-  intents_accepted: number;
+  intents_accepted?: number;
   swaps_completed: number;
   swaps_cancelled: number;
   volume_usdc: number;
@@ -219,7 +219,7 @@ export async function upsertAgentHistory(
     }
     if (updates.intents_accepted !== undefined) {
       sets.push(`intents_accepted = $${idx++}`);
-      values.push(existing.intents_accepted + updates.intents_accepted);
+      values.push((existing.intents_accepted ?? 0) + updates.intents_accepted);
     }
     if (updates.swaps_completed !== undefined) {
       sets.push(`swaps_completed = $${idx++}`);
@@ -376,7 +376,7 @@ export async function getBazaarStats(): Promise<BazaarStats> {
     return {
       agent_address: agent.agent_address,
       broadcasts: agent.broadcasts,
-      intents_accepted: agent.intents_accepted,
+      intents_accepted: agent.intents_accepted ?? 0,
       swaps_completed: agent.swaps_completed,
       completion_rate: parseFloat(rate.toFixed(3)),
       volume_usdc: agent.volume_usdc,
