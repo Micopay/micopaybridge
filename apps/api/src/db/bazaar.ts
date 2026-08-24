@@ -30,6 +30,7 @@ export interface BazaarQuoteRow {
 export interface AgentHistoryRow {
   agent_address: string;
   broadcasts: number;
+  intents_accepted: number;
   swaps_completed: number;
   swaps_cancelled: number;
   volume_usdc: number;
@@ -80,12 +81,16 @@ export async function initBazaarTables(): Promise<void> {
     CREATE TABLE IF NOT EXISTS agent_history (
       agent_address    VARCHAR(56) PRIMARY KEY,
       broadcasts       INTEGER NOT NULL DEFAULT 0,
+      intents_accepted INTEGER NOT NULL DEFAULT 0,
       swaps_completed  INTEGER NOT NULL DEFAULT 0,
       swaps_cancelled  INTEGER NOT NULL DEFAULT 0,
       volume_usdc      DECIMAL(20,2) NOT NULL DEFAULT 0,
       first_seen       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_active      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    ALTER TABLE agent_history
+      ADD COLUMN IF NOT EXISTS intents_accepted INTEGER NOT NULL DEFAULT 0;
   `);
 }
 
@@ -191,11 +196,12 @@ export async function upsertAgentHistory(
 
   if (!existing) {
     await query(`
-      INSERT INTO agent_history (agent_address, broadcasts, swaps_completed, swaps_cancelled, volume_usdc)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO agent_history (agent_address, broadcasts, intents_accepted, swaps_completed, swaps_cancelled, volume_usdc)
+      VALUES ($1, $2, $3, $4, $5, $6)
     `, [
       address,
       updates.broadcasts ?? 1,
+      updates.intents_accepted ?? 0,
       updates.swaps_completed ?? 0,
       updates.swaps_cancelled ?? 0,
       updates.volume_usdc ?? 0
@@ -210,6 +216,10 @@ export async function upsertAgentHistory(
     if (updates.broadcasts !== undefined) {
       sets.push(`broadcasts = $${idx++}`);
       values.push(existing.broadcasts + updates.broadcasts);
+    }
+    if (updates.intents_accepted !== undefined) {
+      sets.push(`intents_accepted = $${idx++}`);
+      values.push(existing.intents_accepted + updates.intents_accepted);
     }
     if (updates.swaps_completed !== undefined) {
       sets.push(`swaps_completed = $${idx++}`);
@@ -328,6 +338,7 @@ export interface BazaarStats {
 export interface AgentStats {
   agent_address: string;
   broadcasts: number;
+  intents_accepted: number;
   swaps_completed: number;
   completion_rate: number;
   volume_usdc: number;
@@ -365,6 +376,7 @@ export async function getBazaarStats(): Promise<BazaarStats> {
     return {
       agent_address: agent.agent_address,
       broadcasts: agent.broadcasts,
+      intents_accepted: agent.intents_accepted,
       swaps_completed: agent.swaps_completed,
       completion_rate: parseFloat(rate.toFixed(3)),
       volume_usdc: agent.volume_usdc,
