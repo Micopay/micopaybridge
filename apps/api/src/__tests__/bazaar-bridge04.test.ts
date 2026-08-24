@@ -10,27 +10,18 @@ import Fastify, { FastifyInstance } from "fastify";
  *    the static fallback.
  * 4. The fallback response carries degraded: true.
  *
+ * This file covers the /stats fallback (3 & 4) and the route-level behavior of
+ * the feed. The feed's exclusion itself is enforced by the SQL in
+ * db/bazaar.ts — the UPDATE sweep and the `expires_at > NOW()` WHERE clause —
+ * and that SQL is exercised for real in bazaar-bridge04-db.test.ts, against a
+ * mocked schema layer.
+ *
  * Runs offline — both the stellar service and the db layer are mocked.
  */
 
 // ── fixtures ──────────────────────────────────────────────────────────────────
 
-const PAST   = new Date(Date.now() - 10 * 60 * 1000).toISOString(); // 10 min ago
 const FUTURE = new Date(Date.now() + 50 * 60 * 1000).toISOString(); // 50 min ahead
-
-const expiredIntent = {
-  id: "int-expired",
-  agent_address: "GEXPIRED000000000000000000000000000000000000000000000000",
-  offered_chain: "ethereum",  offered_symbol: "ETH",  offered_amount: "1",
-  wanted_chain:  "stellar",   wanted_symbol:  "USDC", wanted_amount:  "2800",
-  min_rate: null,
-  status: "active" as const, // status before the sweep runs
-  created_at: new Date(Date.now() - 70 * 60 * 1000).toISOString(),
-  expires_at: PAST,
-  reputation_tier: null,
-  secret_hash: null,
-  selected_quote_id: null,
-};
 
 const activeIntent = {
   id: "int-active",
@@ -64,7 +55,6 @@ vi.mock("../db/bazaar.js", () => ({
   createIntent:        vi.fn(async (i: unknown) => i),
   getIntent:           vi.fn(async () => null),
   getActiveIntents:    vi.fn(async () => []),
-  expireStaleIntents:  vi.fn(async () => 0),
   updateIntent:        vi.fn(async () => {}),
   createQuote:         vi.fn(async (q: unknown) => q),
   getQuotesForIntent:  vi.fn(async () => []),
@@ -82,9 +72,13 @@ const PAYMENT_HEADER = {
   "content-type": "application/json",
 };
 
-// ── feed: expired intent excluded ─────────────────────────────────────────────
+// ── feed: route forwards the db layer's result ────────────────────────────────
+// The route is a thin forwarder: it returns whatever getActiveIntents() gives
+// it. The exclusion of expired intents is enforced by the SQL inside
+// db/bazaar.ts (sweep + `expires_at > NOW()`), which is what
+// bazaar-bridge04-db.test.ts exercises against a mocked schema.
 
-describe("GET /api/v1/bazaar/feed — expired intent exclusion (BRIDGE-04)", () => {
+describe("GET /api/v1/bazaar/feed — route behavior (BRIDGE-04)", () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {
@@ -101,13 +95,9 @@ describe("GET /api/v1/bazaar/feed — expired intent exclusion (BRIDGE-04)", () 
 
   beforeEach(() => {
     vi.mocked(bazaarDb.getActiveIntents).mockClear();
-    vi.mocked(bazaarDb.expireStaleIntents).mockClear();
   });
 
-  it("an expired intent does not appear in the feed", async () => {
-    // After the fix, getActiveIntents() runs the expiry sweep then filters by
-    // expires_at > NOW(). The route returns whatever getActiveIntents() gives —
-    // here we verify the route faithfully forwards the (already-filtered) list.
+  it("serves exactly the intents getActiveIntents() returns", async () => {
     vi.mocked(bazaarDb.getActiveIntents).mockResolvedValueOnce([activeIntent] as any);
 
     const res = await app.inject({
@@ -120,12 +110,11 @@ describe("GET /api/v1/bazaar/feed — expired intent exclusion (BRIDGE-04)", () 
     const body = JSON.parse(res.body);
 
     const ids = body.intents.map((i: { id: string }) => i.id);
-    expect(ids).not.toContain(expiredIntent.id);
-    expect(ids).toContain(activeIntent.id);
+    expect(ids).toEqual([activeIntent.id]);
     expect(body.count).toBe(1);
   });
 
-  it("feed is empty when all intents are expired", async () => {
+  it("serves an empty feed when the db layer returns nothing", async () => {
     vi.mocked(bazaarDb.getActiveIntents).mockResolvedValueOnce([] as any);
 
     const res = await app.inject({
@@ -138,19 +127,6 @@ describe("GET /api/v1/bazaar/feed — expired intent exclusion (BRIDGE-04)", () 
     const body = JSON.parse(res.body);
     expect(body.intents).toHaveLength(0);
     expect(body.count).toBe(0);
-  });
-});
-
-// ── expireStaleIntents: direct unit test ──────────────────────────────────────
-
-describe("expireStaleIntents sweep (BRIDGE-04 — db layer)", () => {
-  it("is exported and returns a number (rowCount from the UPDATE)", async () => {
-    vi.mocked(bazaarDb.expireStaleIntents).mockResolvedValueOnce(2 as any);
-
-    const count = await bazaarDb.expireStaleIntents();
-
-    expect(typeof count).toBe("number");
-    expect(count).toBe(2);
   });
 });
 

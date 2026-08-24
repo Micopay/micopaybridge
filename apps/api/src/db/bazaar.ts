@@ -111,14 +111,17 @@ export async function getIntent(id: string): Promise<BazaarIntentRow | null> {
 }
 
 export async function expireStaleIntents(): Promise<number> {
+  // The sweep only touches 'active' intents. A 'negotiating' intent already
+  // has an on-chain HTLC behind it: flipping it to 'expired' on the intent's
+  // expires_at would label the swap dead while the lock may still be live on
+  // chain, and nothing here unwinds that lock.
   const result = await query(`
     UPDATE bazaar_intents
     SET status = 'expired'
-    WHERE status IN ('active', 'negotiating')
+    WHERE status = 'active'
       AND expires_at <= NOW()
   `);
-  // pg client exposes rowCount on the result object
-  return (result as unknown as { rowCount: number }).rowCount ?? 0;
+  return result.rowCount ?? 0;
 }
 
 export async function getActiveIntents(): Promise<BazaarIntentRow[]> {
