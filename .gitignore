@@ -1,6 +1,10 @@
 node_modules/
 .env
 .env.*
+# Excepcion: .env.example NO lleva valores reales y tiene que viajar en el
+# repo. Sin esta linea, `.env.*` de arriba se lo traga y un clon limpio se
+# queda otra vez sin saber que configurar (#4).
+!.env.example
 *.log
 relay-state.json
 relay-state.json.tmp
