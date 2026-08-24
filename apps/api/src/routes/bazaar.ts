@@ -11,12 +11,14 @@ import {
   getActiveIntents,
   updateIntent,
   createQuote,
+  getQuote,
   getQuotesForIntent,
   getAgentHistory,
   upsertAgentHistory,
   intentRowToObject,
   getBazaarStats,
   type BazaarIntentRow,
+  type BazaarQuoteRow,
 } from "../db/bazaar.js";
 
 interface AssetInfo {
@@ -348,13 +350,115 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
       // genera el iniciador y se la queda. El servidor solo ve el hash.
       const secretHash = body.secret_hash as string;
 
-      const quotes = await getQuotesForIntent(body.intent_id);
-      const quote = body.quote_id
-        ? quotes.find(q => q.id === body.quote_id)
-        : quotes[0];
+      // ── Puertas de #8. Todas ANTES del lock: rechazar despues de bloquear
+      // fondos deja el escrow colgado sin nadie que lo libere.
 
-      const amountUsdc = body.amount_usdc
-        ?? parseFloat(intent.wanted_symbol === "USDC" ? intent.wanted_amount : "28.57");
+      // Aceptarse a uno mismo cuesta $0.005 y no entrega nada. Sin esto, un
+      // agente publica y acepta sus propios intents para fabricarse historial.
+      const acceptor = request.payerAddress ?? "GUNKNOWN";
+      if (acceptor === intent.agent_address) {
+        return reply.status(403).send({
+          error: "self_acceptance_forbidden",
+          message: "An agent cannot accept its own intent.",
+        });
+      }
+
+      // `expires_at` es NOT NULL en la tabla; si aun asi no se puede leer, se
+      // trata como vencido. Esto es una puerta de liquidacion: ante la duda
+      // sobre si el intent sigue vivo, no se bloquean fondos.
+      const expiresAt = Date.parse(intent.expires_at);
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+        return reply.status(409).send({
+          error: "intent_expired",
+          message: "This intent has expired and can no longer be accepted.",
+          expires_at: intent.expires_at,
+        });
+      }
+
+      // pg devuelve DECIMAL como string (rate es DECIMAL(10,6), min_rate
+      // DECIMAL(5,4)). Sin convertir, `"0.9" < "0.95"` compara lexicograficamente
+      // y da lo contrario de lo que parece — el mismo fallo que ya costo un
+      // arreglo en volume_usdc.
+      const rateOf = (q: BazaarQuoteRow): number => Number(q.rate);
+      const quoteVigente = (q: BazaarQuoteRow): boolean => {
+        const validUntil = Date.parse(q.valid_until);
+        return Number.isFinite(validUntil) && validUntil > Date.now();
+      };
+
+      let quote: BazaarQuoteRow | undefined;
+      if (body.quote_id) {
+        // Se busca por id, no dentro de las del intent: si solo mirasemos la
+        // lista del intent, "no existe" y "es de otro intent" darian lo mismo.
+        const candidata = await getQuote(body.quote_id);
+        if (!candidata) {
+          return reply.status(404).send({
+            error: "quote_not_found",
+            message: `No quote exists with id ${body.quote_id}.`,
+          });
+        }
+        if (candidata.intent_id !== body.intent_id) {
+          return reply.status(409).send({
+            error: "quote_intent_mismatch",
+            message: `Quote ${candidata.id} belongs to intent ${candidata.intent_id}, not ${body.intent_id}.`,
+          });
+        }
+        if (!quoteVigente(candidata)) {
+          return reply.status(409).send({
+            error: "quote_expired",
+            message: `Quote ${candidata.id} expired at ${candidata.valid_until}.`,
+          });
+        }
+        quote = candidata;
+      } else {
+        const vigentes = (await getQuotesForIntent(body.intent_id)).filter(quoteVigente);
+        if (vigentes.length === 0) {
+          return reply.status(409).send({
+            error: "no_valid_quote",
+            message: "This intent has no quote that is still valid. Send a quote first.",
+          });
+        }
+        // "Mejor" = rate mas alto. El rate es cuanto de lo que pide recibe el
+        // autor del intent por lo que ofrece, asi que el mas alto es el mas
+        // favorable para el, que es quien publico. Antes se cogia quotes[0]
+        // —la primera que llego, ordenada por fecha— que no es una eleccion,
+        // es un accidente.
+        quote = vigentes.reduce((mejor, q) => (rateOf(q) > rateOf(mejor) ? q : mejor));
+      }
+
+      // El `min_rate` del intent se guardaba y no lo leia nadie. Es el suelo
+      // que puso el autor: por debajo, no hay trato.
+      if (intent.min_rate !== null && intent.min_rate !== undefined) {
+        const minRate = Number(intent.min_rate);
+        if (Number.isFinite(minRate) && rateOf(quote) < minRate) {
+          return reply.status(409).send({
+            error: "quote_below_min_rate",
+            message: `Quote rate ${rateOf(quote)} is below the intent's min_rate ${minRate}.`,
+          });
+        }
+      }
+
+      // Se deriva del intent. El "28.57" que habia aqui era un numero inventado
+      // que se colaba en un escrow real en cuanto el intent no pedia USDC.
+      // Solo hacen falta los dos lados del intent: si una de las patas ES USDC,
+      // esa es la cantidad; si ninguna lo es, no hay importe en USDC que
+      // derivar y el rate de la quote no lo inventa.
+      //
+      // `amount_usdc` del body se sigue respetando como override explicito.
+      // Contrastarlo contra el importe derivado —y con lo que de verdad se
+      // bloquea— es #14, que toca justo esa parte.
+      const derivado =
+        intent.wanted_symbol === "USDC" ? Number(intent.wanted_amount)
+        : intent.offered_symbol === "USDC" ? Number(intent.offered_amount)
+        : null;
+
+      const amountUsdc = body.amount_usdc ?? derivado;
+      if (amountUsdc === null || !Number.isFinite(amountUsdc) || amountUsdc <= 0) {
+        return reply.status(400).send({
+          error: "amount_not_derivable",
+          message:
+            "Neither side of this intent is denominated in USDC, so the escrow amount cannot be derived. Send amount_usdc explicitly.",
+        });
+      }
 
       fastify.log.info(`Bazaar: Locking Stellar side for intent ${body.intent_id}...`);
 
@@ -378,7 +482,7 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
       await updateIntent(body.intent_id, {
         status: "negotiating",
         secret_hash: secretHash,
-        selected_quote_id: quote?.id ?? null,
+        selected_quote_id: quote.id,
       });
 
       // Accept only establishes the first on-chain lock; it is not settlement.
@@ -393,8 +497,9 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
         message: "Stellar side anchored on-chain. Cross-chain intent coordinated.",
         handshake: {
           intent_id: body.intent_id,
-          quote_id: quote?.id ?? "auto",
-          market_maker: quote?.from_agent ?? "market-maker-agent",
+          quote_id: quote.id,
+          market_maker: quote.from_agent,
+          rate: rateOf(quote),
           secret_hash: secretHash,
           htlc_tx_hash: lock.txHash,
           htlc_explorer_url: lock.explorerUrl,

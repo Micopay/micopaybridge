@@ -16,6 +16,9 @@ const activeIntent = {
   secret_hash: null,
   selected_quote_id: null,
   created_at: new Date().toISOString(),
+  // La puerta de vencimiento de #8 lee expires_at; sin el, el intent
+  // se trata como vencido y accept responde 409.
+  expires_at: new Date(Date.now() + 3600_000).toISOString(),
 };
 
 const histories = new Map<string, any>();
@@ -37,7 +40,12 @@ vi.mock("../db/bazaar.js", () => ({
   getActiveIntents: vi.fn(async () => []),
   updateIntent: vi.fn(async () => {}),
   createQuote: vi.fn(async (q: unknown) => q),
-  getQuotesForIntent: vi.fn(async () => []),
+  getQuote: vi.fn(async () => ({ id: "qut-fixture", intent_id: INTENT_ID, from_agent: "GMAKER", rate: 1,
+    valid_until: new Date(Date.now() + 300_000).toISOString(),
+    created_at: new Date().toISOString() })),
+  getQuotesForIntent: vi.fn(async () => [{ id: "qut-fixture", intent_id: INTENT_ID, from_agent: "GMAKER", rate: 1,
+    valid_until: new Date(Date.now() + 300_000).toISOString(),
+    created_at: new Date().toISOString() }]),
   getAgentHistory: vi.fn(async (address: string) => histories.get(address) ?? null),
   upsertAgentHistory: vi.fn(async (address: string, delta: Record<string, number>) => {
     const current = histories.get(address) ?? {
