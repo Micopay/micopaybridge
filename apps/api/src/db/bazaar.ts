@@ -155,6 +155,18 @@ export async function createQuote(quote: Omit<BazaarQuoteRow, 'created_at'>): Pr
   return result as BazaarQuoteRow;
 }
 
+/**
+ * Una quote por id, sin filtrar por intent.
+ *
+ * `getQuotesForIntent()` no sirve para validar un `quote_id` recibido: solo
+ * devuelve las del intent, asi que una quote de OTRO intent y una que no
+ * existe se ven igual (ausente en la lista). Son dos respuestas distintas —
+ * 409 y 404 — y para separarlas hay que poder mirar la quote sola (#8).
+ */
+export async function getQuote(id: string): Promise<BazaarQuoteRow | null> {
+  return getOne<BazaarQuoteRow>('SELECT * FROM bazaar_quotes WHERE id = $1', [id]);
+}
+
 export async function getQuotesForIntent(intentId: string): Promise<BazaarQuoteRow[]> {
   return getMany<BazaarQuoteRow>(
     'SELECT * FROM bazaar_quotes WHERE intent_id = $1 ORDER BY created_at DESC',
