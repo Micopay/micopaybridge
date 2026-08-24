@@ -60,21 +60,21 @@ function getAgentTier(completed: number, total: number) {
     ?? AGENT_TIERS[AGENT_TIERS.length - 1];
 }
 
-const memoryAgentHistory = new Map<string, { broadcasts: number; swaps_completed: number; swaps_cancelled: number; volume_usdc: number; first_seen: string; last_active: string }>();
+const memoryAgentHistory = new Map<string, { broadcasts: number; intents_accepted: number; swaps_completed: number; swaps_cancelled: number; volume_usdc: number; first_seen: string; last_active: string }>();
 
 memoryAgentHistory.set("GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG", {
-  broadcasts: 87, swaps_completed: 83, swaps_cancelled: 4, volume_usdc: 241500,
+  broadcasts: 87, intents_accepted: 0, swaps_completed: 83, swaps_cancelled: 4, volume_usdc: 241500,
   first_seen: "2025-09-14T10:22:00Z", last_active: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
 });
 memoryAgentHistory.set("GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP", {
-  broadcasts: 31, swaps_completed: 28, swaps_cancelled: 3, volume_usdc: 52300,
+  broadcasts: 31, intents_accepted: 0, swaps_completed: 28, swaps_cancelled: 3, volume_usdc: 52300,
   first_seen: "2025-11-03T15:45:00Z", last_active: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
 });
 
 async function getOrCreateHistory(address: string) {
   let history = await getAgentHistory(address);
   if (!history) {
-    history = await upsertAgentHistory(address, { broadcasts: 0, swaps_completed: 0, swaps_cancelled: 0, volume_usdc: 0 });
+    history = await upsertAgentHistory(address, { broadcasts: 0, intents_accepted: 0, swaps_completed: 0, swaps_cancelled: 0, volume_usdc: 0 });
   }
   return history;
 }
@@ -180,12 +180,12 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
           top_agents: [
             {
               agent_address: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG",
-              broadcasts: 87, swaps_completed: 83, completion_rate: 0.954,
+              broadcasts: 87, intents_accepted: 0, swaps_completed: 83, completion_rate: 0.954,
               volume_usdc: 241500, tier: "maestro", tier_emoji: "🍄"
             },
             {
               agent_address: "GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP",
-              broadcasts: 31, swaps_completed: 28, completion_rate: 0.903,
+              broadcasts: 31, intents_accepted: 0, swaps_completed: 28, completion_rate: 0.903,
               volume_usdc: 52300, tier: "experto", tier_emoji: "⭐"
             },
           ],
@@ -241,7 +241,7 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
         dataSource = "in-memory (DB unavailable)";
         const seedHistory = memoryAgentHistory.get(address);
         history = seedHistory ?? {
-          broadcasts: 0, swaps_completed: 0, swaps_cancelled: 0,
+          broadcasts: 0, intents_accepted: 0, swaps_completed: 0, swaps_cancelled: 0,
           volume_usdc: 0, first_seen: new Date().toISOString(),
           last_active: new Date().toISOString(),
         };
@@ -263,6 +263,7 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
           tier: tier.name,
           tier_emoji: tier.emoji,
           tier_description: tier.description,
+          intents_accepted: history.intents_accepted,
           swaps_completed: history.swaps_completed,
           total_broadcasts: history.broadcasts,
           swaps_cancelled: history.swaps_cancelled,
@@ -278,7 +279,7 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
           risk_level: !trusted ? "high" : completion_rate >= 0.95 ? "low" : "medium",
         },
         data_source: `MicoPay Bazaar swap history (${dataSource})`,
-        note: "Agent reputation is derived from completed Bazaar swaps — not transferable, not buyable.",
+        note: "Agent reputation is derived from completed Bazaar swaps. intents_accepted tracks successful accept/lock events separately and does not count as settlement.",
         queried_at: new Date().toISOString(),
       });
     }
@@ -381,7 +382,12 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
         selected_quote_id: quote?.id ?? null,
       });
 
-      // Accept only establishes the first on-chain lock; it is not settlement.
+      // Acceptance is a real event, but it is not settlement. Count it only
+      // after the first lock succeeds and keep it separate from completion.
+      const acceptorAddress = request.payerAddress ?? "GUNKNOWN";
+      await getOrCreateHistory(acceptorAddress);
+      await upsertAgentHistory(acceptorAddress, { intents_accepted: 1 });
+
       // Do not increment swaps_completed or volume_usdc here. Once settlement
       // confirmation exists, credit both the intent author and the acceptor with
       // the amount actually settled. See BRIDGE-08 / issue #15.
@@ -400,6 +406,8 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
           htlc_explorer_url: lock.explorerUrl,
           swap_id: lock.swapId,
         },
+        acceptance_recorded: true,
+        acceptance_counter: "intents_accepted",
         agent_reputation_updated: false,
         reputation_update: "deferred_until_settlement",
         // La pierna contraria ya no es "en producción": es un escrow nativo de

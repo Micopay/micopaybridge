@@ -42,6 +42,7 @@ vi.mock("../db/bazaar.js", () => ({
   upsertAgentHistory: vi.fn(async (address: string, delta: Record<string, number>) => {
     const current = histories.get(address) ?? {
       broadcasts: 0,
+      intents_accepted: 0,
       swaps_completed: 0,
       swaps_cancelled: 0,
       volume_usdc: 0,
@@ -51,6 +52,7 @@ vi.mock("../db/bazaar.js", () => ({
     const updated = {
       ...current,
       broadcasts: current.broadcasts + (delta.broadcasts ?? 0),
+      intents_accepted: current.intents_accepted + (delta.intents_accepted ?? 0),
       swaps_completed: current.swaps_completed + (delta.swaps_completed ?? 0),
       swaps_cancelled: current.swaps_cancelled + (delta.swaps_cancelled ?? 0),
       volume_usdc: current.volume_usdc + (delta.volume_usdc ?? 0),
@@ -89,6 +91,7 @@ describe("Bazaar reputation accounting on accept", () => {
     histories.clear();
     histories.set(AUTHOR, {
       broadcasts: 5,
+      intents_accepted: 0,
       swaps_completed: 4,
       swaps_cancelled: 1,
       volume_usdc: 100,
@@ -97,6 +100,7 @@ describe("Bazaar reputation accounting on accept", () => {
     });
     histories.set(ACCEPTOR, {
       broadcasts: 3,
+      intents_accepted: 7,
       swaps_completed: 2,
       swaps_cancelled: 0,
       volume_usdc: 50,
@@ -106,7 +110,7 @@ describe("Bazaar reputation accounting on accept", () => {
     vi.mocked(upsertAgentHistory).mockClear();
   });
 
-  it("does not count accept as completion for either participant", async () => {
+  it("counts acceptance for the acceptor without counting a completion", async () => {
     const accepted = await app.inject({
       method: "POST",
       url: "/api/v1/bazaar/accept",
@@ -120,9 +124,15 @@ describe("Bazaar reputation accounting on accept", () => {
 
     expect(accepted.statusCode).toBe(200);
     const acceptedBody = JSON.parse(accepted.body);
+    expect(acceptedBody.acceptance_recorded).toBe(true);
+    expect(acceptedBody.acceptance_counter).toBe("intents_accepted");
     expect(acceptedBody.agent_reputation_updated).toBe(false);
     expect(acceptedBody.reputation_update).toBe("deferred_until_settlement");
-    expect(vi.mocked(upsertAgentHistory)).not.toHaveBeenCalled();
+    expect(vi.mocked(upsertAgentHistory)).toHaveBeenCalledOnce();
+    expect(vi.mocked(upsertAgentHistory)).toHaveBeenCalledWith(
+      ACCEPTOR,
+      { intents_accepted: 1 },
+    );
 
     const authorResponse = await app.inject({
       method: "GET",
@@ -139,8 +149,11 @@ describe("Bazaar reputation accounting on accept", () => {
     const author = JSON.parse(authorResponse.body).agent_reputation;
     const acceptor = JSON.parse(acceptorResponse.body).agent_reputation;
 
+    expect(author.intents_accepted).toBe(0);
     expect(author.swaps_completed).toBe(4);
     expect(author.volume_usdc_total).toBe("100");
+
+    expect(acceptor.intents_accepted).toBe(8);
     expect(acceptor.swaps_completed).toBe(2);
     expect(acceptor.volume_usdc_total).toBe("50");
   });

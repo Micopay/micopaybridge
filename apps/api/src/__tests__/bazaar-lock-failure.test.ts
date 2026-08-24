@@ -43,7 +43,16 @@ vi.mock("../db/bazaar.js", () => ({
   updateIntent: vi.fn(async () => {}),
   createQuote: vi.fn(async (q: unknown) => q),
   getQuotesForIntent: vi.fn(async () => []),
-  getAgentHistory: vi.fn(async () => null),
+  getAgentHistory: vi.fn(async () => ({
+    agent_address: "GTESTBAZAAR",
+    broadcasts: 0,
+    intents_accepted: 0,
+    swaps_completed: 0,
+    swaps_cancelled: 0,
+    volume_usdc: 0,
+    first_seen: "2026-01-01T00:00:00.000Z",
+    last_active: "2026-01-01T00:00:00.000Z",
+  })),
   upsertAgentHistory: vi.fn(async () => {}),
   intentRowToObject: (row: unknown) => row,
   getBazaarStats: vi.fn(async () => ({})),
@@ -117,6 +126,8 @@ describe("POST /api/v1/bazaar/accept, fallo del lock on-chain", () => {
   it("no se escribe reputacion: agent_history queda intacto", async () => {
     await acceptConLockRoto();
 
+    // Si el lock falla no hubo ni aceptacion confirmada ni settlement, asi que
+    // agent_history no puede sumar contadores, volumen ni actividad.
     expect(vi.mocked(upsertAgentHistory)).not.toHaveBeenCalled();
   });
 
@@ -149,10 +160,18 @@ describe("POST /api/v1/bazaar/accept, fallo del lock on-chain", () => {
     const body = JSON.parse(res.body);
     expect(body.status).toBe("negotiating");
     expect(body.handshake.htlc_tx_hash).toBe("abc123");
+    expect(body.acceptance_recorded).toBe(true);
+    expect(body.acceptance_counter).toBe("intents_accepted");
     expect(body.agent_reputation_updated).toBe(false);
     expect(body.reputation_update).toBe("deferred_until_settlement");
 
+    // Sin este test los cinco anteriores tambien pasarian si accept estuviera
+    // roto de raiz y devolviera 502 siempre.
     expect(vi.mocked(updateIntent)).toHaveBeenCalledOnce();
-    expect(vi.mocked(upsertAgentHistory)).not.toHaveBeenCalled();
+    expect(vi.mocked(upsertAgentHistory)).toHaveBeenCalledOnce();
+    expect(vi.mocked(upsertAgentHistory)).toHaveBeenCalledWith(
+      "GTESTBAZAAR",
+      { intents_accepted: 1 },
+    );
   });
 });
