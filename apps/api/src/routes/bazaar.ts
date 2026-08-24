@@ -83,10 +83,6 @@ async function recordBroadcast(address: string) {
   await upsertAgentHistory(address, { broadcasts: 1 });
 }
 
-async function recordCompletion(address: string, volumeUsdc: number) {
-  await upsertAgentHistory(address, { swaps_completed: 1, volume_usdc: volumeUsdc });
-}
-
 let initialized = false;
 let initFailed = false;
 
@@ -385,7 +381,10 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
         selected_quote_id: quote?.id ?? null,
       });
 
-      await recordCompletion(intent.agent_address, amountUsdc);
+      // Accept only establishes the first on-chain lock; it is not settlement.
+      // Do not increment swaps_completed or volume_usdc here. Once settlement
+      // confirmation exists, credit both the intent author and the acceptor with
+      // the amount actually settled. See BRIDGE-08 / issue #15.
 
       fastify.log.info(`Bazaar: Lock confirmed. swap_id=${lock.swapId.slice(0, 10)} tx=${lock.txHash}`);
 
@@ -401,7 +400,8 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
           htlc_explorer_url: lock.explorerUrl,
           swap_id: lock.swapId,
         },
-        agent_reputation_updated: true,
+        agent_reputation_updated: false,
+        reputation_update: "deferred_until_settlement",
         // La pierna contraria ya no es "en producción": es un escrow nativo de
         // XRPL y corre en POST /api/v1/swaps/execute (§M4.5 del plan).
         note: "Stellar side locked. The counterpart leg runs as a native XRPL escrow (PREIMAGE-SHA-256 + CancelAfter) — see POST /api/v1/swaps/execute.",

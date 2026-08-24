@@ -117,8 +117,6 @@ describe("POST /api/v1/bazaar/accept, fallo del lock on-chain", () => {
   it("no se escribe reputacion: agent_history queda intacto", async () => {
     await acceptConLockRoto();
 
-    // recordCompletion() escribe via upsertAgentHistory. Si el swap no ocurrio,
-    // el agente no puede sumar volumen ni swaps completados.
     expect(vi.mocked(upsertAgentHistory)).not.toHaveBeenCalled();
   });
 
@@ -129,7 +127,7 @@ describe("POST /api/v1/bazaar/accept, fallo del lock on-chain", () => {
     expect(body.reason).toContain("insufficient platform balance");
   });
 
-  it("el camino feliz sigue respondiendo 200 y muta el estado", async () => {
+  it("el camino feliz responde 200, muta el intent y difiere la reputacion", async () => {
     vi.mocked(lockAtomicSwap).mockResolvedValueOnce({
       txHash: "abc123",
       swapId: "def456",
@@ -151,10 +149,10 @@ describe("POST /api/v1/bazaar/accept, fallo del lock on-chain", () => {
     const body = JSON.parse(res.body);
     expect(body.status).toBe("negotiating");
     expect(body.handshake.htlc_tx_hash).toBe("abc123");
+    expect(body.agent_reputation_updated).toBe(false);
+    expect(body.reputation_update).toBe("deferred_until_settlement");
 
-    // Sin este test los cinco anteriores tambien pasarian si accept estuviera
-    // roto de raiz y devolviera 502 siempre.
     expect(vi.mocked(updateIntent)).toHaveBeenCalledOnce();
-    expect(vi.mocked(upsertAgentHistory)).toHaveBeenCalledOnce();
+    expect(vi.mocked(upsertAgentHistory)).not.toHaveBeenCalled();
   });
 });
