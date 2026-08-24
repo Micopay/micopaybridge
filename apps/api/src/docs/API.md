@@ -72,7 +72,24 @@ curl -H "X-PAYMENT: mock:GTEST123:0.005" \
 ```
 
 Si el lock on-chain falla, la respuesta es **502** y el intent queda sin
-modificar: no se bloquearon fondos.
+modificar: no se bloquearon fondos y no cambia ningun contador de historial.
+
+Si el lock se confirma, el pagador que acepto el intent incrementa
+`intents_accepted` en 1. Este contador representa una aceptacion real y se
+mantiene separado de `swaps_completed`: aceptar solo establece el primer lock,
+no demuestra settlement. Por lo tanto `swaps_completed` y `volume_usdc` no
+cambian en este endpoint.
+
+La respuesta exitosa incluye `acceptance_recorded: true`,
+`acceptance_counter: "intents_accepted"` y mantiene
+`reputation_update: "deferred_until_settlement"` hasta que exista una ruta de
+settlement que pueda acreditar a ambos participantes.
+
+#### GET /api/v1/bazaar/reputation/:addr
+
+`agent_reputation.intents_accepted` informa cuantas aceptaciones con lock
+confirmado ha realizado ese agente. Es una metrica de actividad distinta de
+`swaps_completed` y no participa en el tier ni en `completion_rate`.
 
 ### Cash (P2P Exchange)
 
