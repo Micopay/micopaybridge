@@ -38,55 +38,17 @@ export interface AgentHistoryRow {
 }
 
 export async function initBazaarTables(): Promise<void> {
-  await query(`
-    CREATE TABLE IF NOT EXISTS bazaar_intents (
-      id              VARCHAR(64) PRIMARY KEY,
-      agent_address   VARCHAR(56) NOT NULL,
-      offered_chain   VARCHAR(32) NOT NULL,
-      offered_symbol  VARCHAR(16) NOT NULL,
-      offered_amount  VARCHAR(32) NOT NULL,
-      wanted_chain    VARCHAR(32) NOT NULL,
-      wanted_symbol   VARCHAR(16) NOT NULL,
-      wanted_amount   VARCHAR(32) NOT NULL,
-      min_rate        DECIMAL(10,6),
-      status          VARCHAR(20) NOT NULL DEFAULT 'active',
-      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      expires_at      TIMESTAMPTZ NOT NULL,
-      reputation_tier VARCHAR(20),
-      secret_hash     VARCHAR(72),
-      selected_quote_id VARCHAR(64),
-      CONSTRAINT bazaar_intents_status_check CHECK (status IN ('active', 'negotiating', 'executed', 'expired'))
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_bazaar_intents_status ON bazaar_intents(status);
-    CREATE INDEX IF NOT EXISTS idx_bazaar_intents_agent ON bazaar_intents(agent_address);
-    CREATE INDEX IF NOT EXISTS idx_bazaar_intents_created ON bazaar_intents(created_at DESC);
-  `);
-
-  await query(`
-    CREATE TABLE IF NOT EXISTS bazaar_quotes (
-      id          VARCHAR(64) PRIMARY KEY,
-      intent_id   VARCHAR(64) NOT NULL REFERENCES bazaar_intents(id) ON DELETE CASCADE,
-      from_agent  VARCHAR(56) NOT NULL,
-      rate        DECIMAL(10,6) NOT NULL,
-      valid_until TIMESTAMPTZ NOT NULL,
-      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_bazaar_quotes_intent ON bazaar_quotes(intent_id);
-  `);
-
-  await query(`
-    CREATE TABLE IF NOT EXISTS agent_history (
-      agent_address    VARCHAR(56) PRIMARY KEY,
-      broadcasts       INTEGER NOT NULL DEFAULT 0,
-      swaps_completed  INTEGER NOT NULL DEFAULT 0,
-      swaps_cancelled  INTEGER NOT NULL DEFAULT 0,
-      volume_usdc      DECIMAL(20,2) NOT NULL DEFAULT 0,
-      first_seen       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_active      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  const result = await query(`
+    SELECT EXISTS (
+      SELECT FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND table_name = 'bazaar_intents'
     );
   `);
+  
+  if (!result.rows[0]?.exists) {
+    throw new Error('Bazaar tables are missing. Please run \`npm run db:setup\` or ensure migrations have run.');
+  }
 }
 
 export async function createIntent(intent: Omit<BazaarIntentRow, 'created_at'>): Promise<BazaarIntentRow> {
