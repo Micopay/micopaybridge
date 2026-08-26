@@ -110,10 +110,26 @@ export async function getIntent(id: string): Promise<BazaarIntentRow | null> {
   return getOne<BazaarIntentRow>('SELECT * FROM bazaar_intents WHERE id = $1', [id]);
 }
 
+export async function expireStaleIntents(): Promise<number> {
+  // The sweep only touches 'active' intents. A 'negotiating' intent already
+  // has an on-chain HTLC behind it: flipping it to 'expired' on the intent's
+  // expires_at would label the swap dead while the lock may still be live on
+  // chain, and nothing here unwinds that lock.
+  const result = await query(`
+    UPDATE bazaar_intents
+    SET status = 'expired'
+    WHERE status = 'active'
+      AND expires_at <= NOW()
+  `);
+  return result.rowCount ?? 0;
+}
+
 export async function getActiveIntents(): Promise<BazaarIntentRow[]> {
+  await expireStaleIntents();
   return getMany<BazaarIntentRow>(`
     SELECT * FROM bazaar_intents
     WHERE status = 'active'
+      AND expires_at > NOW()
     ORDER BY created_at DESC
   `);
 }

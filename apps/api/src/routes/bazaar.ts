@@ -164,10 +164,13 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
     "/api/v1/bazaar/stats",
     async (_request, reply) => {
       let stats;
+      let usingFallback = false;
 
       try {
         stats = await getBazaarStats();
-      } catch {
+      } catch (err) {
+        fastify.log.warn({ err }, "Bazaar: getBazaarStats() failed — serving static-fallback data");
+        usingFallback = true;
         const now = new Date();
         stats = {
           total_intents: 2,
@@ -223,7 +226,8 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.send({
         ...stats,
         network: "global-intent-layer",
-        data_source: "PostgreSQL",
+        data_source: usingFallback ? "static-fallback" : "PostgreSQL",
+        ...(usingFallback && { degraded: true }),
         queried_at: new Date().toISOString(),
       });
     }
