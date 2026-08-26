@@ -33,7 +33,6 @@ vi.mock("../services/stellar.service.js", () => ({
 
 vi.mock("../db/bazaar.js", () => ({
   initBazaarTables: vi.fn(async () => {}),
-  seedAgentHistories: vi.fn(async () => {}),
   seedIntents: vi.fn(async () => {}),
   createIntent: vi.fn(async (i: unknown) => i),
   getIntent: vi.fn(async () => ({ ...activeIntent })),
