@@ -48,7 +48,7 @@ export async function initBazaarTables(): Promise<void> {
       wanted_chain    VARCHAR(32) NOT NULL,
       wanted_symbol   VARCHAR(16) NOT NULL,
       wanted_amount   VARCHAR(32) NOT NULL,
-      min_rate        DECIMAL(5,4),
+      min_rate        DECIMAL(10,6),
       status          VARCHAR(20) NOT NULL DEFAULT 'active',
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       expires_at      TIMESTAMPTZ NOT NULL,
