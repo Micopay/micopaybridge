@@ -4,7 +4,6 @@ import { randomUUID } from "crypto";
 import { lockAtomicSwap } from "../services/stellar.service.js";
 import {
   initBazaarTables,
-  seedAgentHistories,
   seedIntents,
   createIntent,
   getIntent,
@@ -62,17 +61,6 @@ function getAgentTier(completed: number, total: number) {
     ?? AGENT_TIERS[AGENT_TIERS.length - 1];
 }
 
-const memoryAgentHistory = new Map<string, { broadcasts: number; swaps_completed: number; swaps_cancelled: number; volume_usdc: number; first_seen: string; last_active: string }>();
-
-memoryAgentHistory.set("GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG", {
-  broadcasts: 87, swaps_completed: 83, swaps_cancelled: 4, volume_usdc: 241500,
-  first_seen: "2025-09-14T10:22:00Z", last_active: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-});
-memoryAgentHistory.set("GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP", {
-  broadcasts: 31, swaps_completed: 28, swaps_cancelled: 3, volume_usdc: 52300,
-  first_seen: "2025-11-03T15:45:00Z", last_active: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
-});
-
 async function getOrCreateHistory(address: string) {
   let history = await getAgentHistory(address);
   if (!history) {
@@ -93,7 +81,6 @@ async function ensureBazaarInitialized() {
   if (initFailed) return;
   try {
     await initBazaarTables();
-    await seedAgentHistories();
     await seedIntents();
     initialized = true;
   } catch (error) {
@@ -169,57 +156,20 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
       try {
         stats = await getBazaarStats();
       } catch (err) {
-        fastify.log.warn({ err }, "Bazaar: getBazaarStats() failed — serving static-fallback data");
+        fastify.log.warn({ err }, "Bazaar: getBazaarStats() failed — DB unavailable");
         usingFallback = true;
-        const now = new Date();
         stats = {
-          total_intents: 2,
-          active_intents: 2,
+          total_intents: 0,
+          active_intents: 0,
           negotiating_intents: 0,
           executed_intents: 0,
           expired_intents: 0,
-          total_volume_usdc: 293800,
-          total_broadcasts: 118,
-          total_swaps_completed: 111,
-          total_swaps_cancelled: 7,
-          top_agents: [
-            {
-              agent_address: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG",
-              broadcasts: 87, swaps_completed: 83, completion_rate: 0.954,
-              volume_usdc: 241500, tier: "maestro", tier_emoji: "🍄"
-            },
-            {
-              agent_address: "GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP",
-              broadcasts: 31, swaps_completed: 28, completion_rate: 0.903,
-              volume_usdc: 52300, tier: "experto", tier_emoji: "⭐"
-            },
-          ],
-          recent_intents: [
-            {
-              id: "int-001",
-              agent_address: "GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG",
-              offered: { chain: "ethereum", symbol: "ETH", amount: "2.5" },
-              wanted: { chain: "stellar", symbol: "USDC", amount: "7000" },
-              status: "active",
-              created_at: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
-              expires_at: new Date(now.getTime() + 55 * 60 * 1000).toISOString(),
-              reputation_tier: "maestro",
-              secret_hash: null,
-              selected_quote_id: null,
-            },
-            {
-              id: "int-002",
-              agent_address: "GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP",
-              offered: { chain: "stellar", symbol: "USDC", amount: "500" },
-              wanted: { chain: "physical", symbol: "MXN", amount: "8750" },
-              status: "active",
-              created_at: new Date(now.getTime() - 2 * 60 * 1000).toISOString(),
-              expires_at: new Date(now.getTime() + 58 * 60 * 1000).toISOString(),
-              reputation_tier: "experto",
-              secret_hash: null,
-              selected_quote_id: null,
-            },
-          ],
+          total_volume_usdc: 0,
+          total_broadcasts: 0,
+          total_swaps_completed: 0,
+          total_swaps_cancelled: 0,
+          top_agents: [],
+          recent_intents: [],
         };
       }
 
@@ -238,21 +188,55 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const { address } = request.params as { address: string };
 
-      let history;
+      // Three cases:
+      //   1. DB available, agent has history   → full reputation object
+      //   2. DB available, agent not yet seen  → no_history (explicit)
+      //   3. DB unavailable                    → degraded (explicit, no invented figures)
+
+      let history: Awaited<ReturnType<typeof getAgentHistory>> | null = null;
       let dataSource = "PostgreSQL";
+      let dbAvailable = true;
 
       try {
-        history = await getOrCreateHistory(address);
+        history = await getAgentHistory(address);
       } catch {
-        dataSource = "in-memory (DB unavailable)";
-        const seedHistory = memoryAgentHistory.get(address);
-        history = seedHistory ?? {
-          broadcasts: 0, swaps_completed: 0, swaps_cancelled: 0,
-          volume_usdc: 0, first_seen: new Date().toISOString(),
-          last_active: new Date().toISOString(),
-        };
+        dbAvailable = false;
+        dataSource = "unavailable";
       }
 
+      const queried_at = new Date().toISOString();
+
+      // ── Case 3: DB down ─────────────────────────────────────────────────────
+      if (!dbAvailable) {
+        return reply.status(503).send({
+          address,
+          no_history: true,
+          reason: "database_unavailable",
+          message:
+            "Agent reputation is derived from on-chain Bazaar activity stored in PostgreSQL. " +
+            "The database is currently unreachable — no reputation data can be served. " +
+            "Treat this agent as unknown until the service recovers.",
+          data_source: "unavailable",
+          queried_at,
+        });
+      }
+
+      // ── Case 2: DB available but agent has never appeared in the bazaar ────
+      if (!history) {
+        return reply.send({
+          address,
+          no_history: true,
+          reason: "agent_not_seen",
+          message:
+            "This address has no recorded activity in the MicoPay Bazaar. " +
+            "Reputation is earned solely through completed swaps — it cannot be transferred or bought. " +
+            "A missing record means the agent has never broadcast an intent here, not that data is unavailable.",
+          data_source: "MicoPay Bazaar swap history (PostgreSQL)",
+          queried_at,
+        });
+      }
+
+      // ── Case 1: Agent has history ───────────────────────────────────────────
       const completion_rate = history.broadcasts > 0
         ? parseFloat((history.swaps_completed / history.broadcasts).toFixed(3))
         : 0;
@@ -265,6 +249,7 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
 
       return reply.send({
         address,
+        no_history: false,
         agent_reputation: {
           tier: tier.name,
           tier_emoji: tier.emoji,
@@ -285,7 +270,7 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
         },
         data_source: `MicoPay Bazaar swap history (${dataSource})`,
         note: "Agent reputation is derived from completed Bazaar swaps — not transferable, not buyable.",
-        queried_at: new Date().toISOString(),
+        queried_at,
       });
     }
   );

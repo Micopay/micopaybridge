@@ -262,27 +262,6 @@ export async function upsertAgentHistory(
   }
 }
 
-export async function seedAgentHistories(): Promise<void> {
-  const agents = [
-    {
-      address: 'GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG',
-      broadcasts: 87, swaps_completed: 83, swaps_cancelled: 4, volume_usdc: 241500
-    },
-    {
-      address: 'GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP',
-      broadcasts: 31, swaps_completed: 28, swaps_cancelled: 3, volume_usdc: 52300
-    },
-  ];
-
-  for (const agent of agents) {
-    await query(`
-      INSERT INTO agent_history (agent_address, broadcasts, swaps_completed, swaps_cancelled, volume_usdc)
-      VALUES ($1, $2, $3, $4, $5)
-      ON CONFLICT (agent_address) DO NOTHING
-    `, [agent.address, agent.broadcasts, agent.swaps_completed, agent.swaps_cancelled, agent.volume_usdc]);
-  }
-}
-
 export async function seedIntents(): Promise<void> {
   const now = new Date();
   const intents = [
@@ -293,7 +272,7 @@ export async function seedIntents(): Promise<void> {
       wanted_chain: 'stellar', wanted_symbol: 'USDC', wanted_amount: '7000',
       status: 'active',
       expires_at: new Date(now.getTime() + 55 * 60 * 1000).toISOString(),
-      reputation_tier: 'maestro'
+      reputation_tier: null
     },
     {
       id: 'int-002',
@@ -302,7 +281,7 @@ export async function seedIntents(): Promise<void> {
       wanted_chain: 'physical', wanted_symbol: 'MXN', wanted_amount: '8750',
       status: 'active',
       expires_at: new Date(now.getTime() + 58 * 60 * 1000).toISOString(),
-      reputation_tier: 'experto'
+      reputation_tier: null
     },
   ];
 
