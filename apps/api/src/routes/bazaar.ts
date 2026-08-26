@@ -514,4 +514,47 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
       });
     }
   );
+
+  fastify.get(
+    "/api/v1/bazaar/intent/:id",
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const intent = await getIntent(id);
+      
+      if (!intent) {
+        return reply.status(404).send({ error: "Intent not found" });
+      }
+
+      return reply.send(intentRowToObject(intent));
+    }
+  );
+
+  fastify.get(
+    "/api/v1/bazaar/intent/:id/quotes",
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      
+      const intent = await getIntent(id);
+      if (!intent) {
+        return reply.status(404).send({ error: "Intent not found" });
+      }
+
+      const quotes = await getQuotesForIntent(id);
+      const now = Date.now();
+      
+      const enrichedQuotes = quotes.map((q) => {
+        const validUntil = Date.parse(q.valid_until);
+        const isExpired = !Number.isFinite(validUntil) || validUntil <= now;
+        return {
+          ...q,
+          is_expired: isExpired,
+        };
+      });
+
+      return reply.send({
+        intent_id: id,
+        quotes: enrichedQuotes,
+      });
+    }
+  );
 }
