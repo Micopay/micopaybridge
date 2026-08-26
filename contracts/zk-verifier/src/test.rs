@@ -8,7 +8,7 @@ fn make_env() -> Env {
     Env::default()
 }
 
-fn deploy_and_init(env: &Env) -> (ZkVerifierRegistryClient, Address) {
+fn deploy_and_init(env: &Env) -> (ZkVerifierRegistryClient<'_>, Address) {
     let admin = Address::generate(env);
     let contract_id = env.register(ZkVerifierRegistry, ());
     let client = ZkVerifierRegistryClient::new(env, &contract_id);

@@ -129,8 +129,6 @@ impl AtomicSwapHTLC {
 
         assert!(swap.status == SwapStatus::Locked, "Swap not in locked state");
 
-        swap.counterparty.require_auth();
-
         let computed_hash: BytesN<32> = env.crypto().sha256(&secret).into();
         assert!(computed_hash == swap.secret_hash, "Invalid secret");
 

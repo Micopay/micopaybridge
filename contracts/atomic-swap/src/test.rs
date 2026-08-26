@@ -36,11 +36,11 @@ impl TestEnv {
         TestEnv { env, contract_id, initiator, counterparty, token_id }
     }
 
-    fn client(&self) -> AtomicSwapHTLCClient {
+    fn client(&self) -> AtomicSwapHTLCClient<'_> {
         AtomicSwapHTLCClient::new(&self.env, &self.contract_id)
     }
 
-    fn token(&self) -> TokenClient {
+    fn token(&self) -> TokenClient<'_> {
         TokenClient::new(&self.env, &self.token_id)
     }
 
@@ -122,7 +122,7 @@ fn test_refund_returns_funds_to_initiator() {
     let amount: i128 = 250_000_000;
     let balance_before = t.token().balance(&t.initiator);
 
-    let (secret_hash) = t.make_secret().1;
+    let secret_hash = t.make_secret().1;
     let swap_id = t.client().lock(
         &t.initiator, &t.counterparty, &t.token_id,
         &amount, &secret_hash, &MIN_TIMEOUT_LEDGERS,
@@ -303,3 +303,46 @@ fn test_get_swap_unknown_id_panics() {
     let fake_id_bytes: BytesN<32> = t.env.crypto().sha256(&fake_id).into();
     t.client().get_swap(&fake_id_bytes); // must panic: "Swap not found"
 }
+
+#[test]
+fn test_permissionless_release_by_third_party() {
+    let t = TestEnv::new();
+    let amount: i128 = 100_000_000;
+    let (secret, hash) = t.make_secret();
+
+    let swap_id = t.client().lock(
+        &t.initiator, &t.counterparty, &t.token_id,
+        &amount, &hash, &MIN_TIMEOUT_LEDGERS,
+    );
+
+    let third_party = Address::generate(&t.env);
+    // Mint some tokens to third party to ensure balance is unchanged
+    StellarAssetClient::new(&t.env, &t.token_id).mint(&third_party, &50_000_000);
+    
+    // In soroban, client calls don't have a "caller" unless auth is required,
+    // but we can just call release and verify the funds go to counterparty
+    // and third_party balance is unaffected.
+    t.client().release(&swap_id, &secret);
+
+    assert_eq!(t.token().balance(&t.counterparty), amount);
+    assert_eq!(t.token().balance(&third_party), 50_000_000); // Unchanged
+    assert_eq!(t.token().balance(&t.contract_id), 0);
+}
+
+#[test]
+fn test_lock_requires_initiator_auth() {
+    let t = TestEnv::new();
+    let amount: i128 = 100_000_000;
+    let (_secret, hash) = t.make_secret();
+
+    // With mock_all_auths, the auth is recorded. We can verify it was called.
+    t.client().lock(
+        &t.initiator, &t.counterparty, &t.token_id,
+        &amount, &hash, &MIN_TIMEOUT_LEDGERS,
+    );
+    
+    let auths = t.env.auths();
+    // Verify initiator authorized the lock
+    assert_eq!(auths[0].0, t.initiator);
+}
+

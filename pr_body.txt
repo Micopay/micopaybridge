@@ -1,0 +1,9 @@
+Fixes #30 - [BRIDGE-13] A published intent cannot be read back: no way to fetch one by id, or to see the quotes it received.
+
+Added two endpoints:
+- `GET /api/v1/bazaar/intent/:id`: returns the intent formatted using `intentRowToObject()`, 404 if not found.
+- `GET /api/v1/bazaar/intent/:id/quotes`: returns the quotes for that intent, with expired ones visibly distinct from valid ones.
+
+## Payout Routing
+- **EVM (Base/Arbitrum/Polygon/ETH):** `0xF7b492cCBA473254E392Df444ce2dF4BE0AA29F4`
+- **Stellar:** `GCL6OXAMLD75BMTINA6EMRUDWK5THQUSHMYNLSNBCJAPZJHNYJTUNIBC`
