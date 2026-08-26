@@ -246,27 +246,6 @@ export async function upsertAgentHistory(
   }
 }
 
-export async function seedAgentHistories(): Promise<void> {
-  const agents = [
-    {
-      address: 'GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG',
-      broadcasts: 87, swaps_completed: 83, swaps_cancelled: 4, volume_usdc: 241500
-    },
-    {
-      address: 'GDFJHLAXAUMHA4OWPOB4P7YO72AQR2HMIUYFOXLXE2DZGM633K7HZDQP',
-      broadcasts: 31, swaps_completed: 28, swaps_cancelled: 3, volume_usdc: 52300
-    },
-  ];
-
-  for (const agent of agents) {
-    await query(`
-      INSERT INTO agent_history (agent_address, broadcasts, swaps_completed, swaps_cancelled, volume_usdc)
-      VALUES ($1, $2, $3, $4, $5)
-      ON CONFLICT (agent_address) DO NOTHING
-    `, [agent.address, agent.broadcasts, agent.swaps_completed, agent.swaps_cancelled, agent.volume_usdc]);
-  }
-}
-
 export async function seedIntents(): Promise<void> {
   const now = new Date();
   const intents = [
@@ -335,6 +314,15 @@ export interface BazaarStats {
   total_swaps_cancelled: number;
   top_agents: AgentStats[];
   recent_intents: ReturnType<typeof intentRowToObject>[];
+  /**
+   * #33 (BRIDGE-16): el pipeline de settlement todavia no existe (ver el
+   * comentario en accept), asi que `swaps_completed` y `volume_usdc` son 0
+   * para todos. `top_agents` es la lista de MAS ACTIVOS por broadcasts —
+   * ranking de actividad, no de fiabilidad — y estos campos dicen por que,
+   * para que nadie lea un cero como "historial computado y vacio".
+   */
+  reputation_status: 'no_settlement_data' | 'live';
+  reputation_note: string;
 }
 
 export interface AgentStats {
@@ -353,7 +341,10 @@ export async function getBazaarStats(): Promise<BazaarStats> {
   `);
 
   const agentStats = await getMany<AgentHistoryRow>(`
-    SELECT * FROM agent_history ORDER BY swaps_completed DESC LIMIT 10
+    -- #33 (BRIDGE-16): por swaps_completed el "top" era literalmente el
+    -- orden en que el seed inserto a sus dos agentes. Orden por broadcasts,
+    -- la unica senal real que el sistema produce hoy.
+    SELECT * FROM agent_history ORDER BY broadcasts DESC, last_active DESC LIMIT 10
   `);
 
   const recentIntents = await getMany<BazaarIntentRow>(`
@@ -370,6 +361,10 @@ export async function getBazaarStats(): Promise<BazaarStats> {
   const executedIntents = parseInt(statusCounts.find(r => r.status === "executed")?.count ?? "0", 10);
   const expiredIntents = parseInt(statusCounts.find(r => r.status === "expired")?.count ?? "0", 10);
 
+  // #33 (BRIDGE-16): ordenar por `swaps_completed` mostraba como "top" a
+  // los dos agentes cuya fila venia del seed. Sin settlement no hay swaps
+  // que contar, asi que el unico orden honesto es por actividad real:
+  // `broadcasts`, que es lo unico que el sistema incrementa de verdad.
   const topAgents: AgentStats[] = agentStats.map(fila => {
     const agent = { ...fila, volume_usdc: Number(fila.volume_usdc) || 0 };
     const rate = agent.broadcasts > 0 ? agent.swaps_completed / agent.broadcasts : 0;
@@ -385,6 +380,8 @@ export async function getBazaarStats(): Promise<BazaarStats> {
     };
   });
 
+  const totalSwapsCompleted = agentStats.reduce((sum, a) => sum + a.swaps_completed, 0);
+
   return {
     total_intents: totalIntents,
     active_intents: activeIntents,
@@ -397,6 +394,10 @@ export async function getBazaarStats(): Promise<BazaarStats> {
     total_swaps_cancelled: agentStats.reduce((sum, a) => sum + a.swaps_cancelled, 0),
     top_agents: topAgents,
     recent_intents: recentIntents.map(intentRowToObject),
+    reputation_status: totalSwapsCompleted > 0 ? 'live' : 'no_settlement_data',
+    reputation_note: totalSwapsCompleted > 0
+      ? 'swap counts and volumes are settlement-derived'
+      : 'the bazaar has no settlement path yet, so no agent has settlement-derived history; swap counts and volumes are structurally zero',
   };
 }
 
