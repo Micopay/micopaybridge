@@ -65,8 +65,11 @@ describe("red de Stellar — una sola interpretación", () => {
     // archivos decidían la red cada uno por su lado. Que solo lo haga uno.
     const { readFileSync, readdirSync, statSync } = await import("node:fs");
     const { join } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
 
-    const raiz = new URL("../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+    // fileURLToPath y no .pathname: el segundo deja los espacios de la ruta
+    // como %20 y readdirSync no encuentra el directorio.
+    const raiz = fileURLToPath(new URL("../", import.meta.url));
     const culpables: string[] = [];
 
     const recorrer = (dir: string) => {
