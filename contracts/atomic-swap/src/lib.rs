@@ -44,7 +44,7 @@ impl AtomicSwapHTLC {
     /// Lock funds for a cross-chain atomic swap.
     ///
     /// - `initiator`: party locking funds (must auth)
-    /// - `counterparty`: party who can release with the secret
+    /// - `counterparty`: party who receives funds when the secret is revealed
     /// - `token`: SAC token address
     /// - `amount`: amount to lock
     /// - `secret_hash`: sha256(secret) — preimage is the unlock key
@@ -117,6 +117,10 @@ impl AtomicSwapHTLC {
 
     /// Release funds to counterparty by revealing the secret.
     ///
+    /// Release is permissionless: the valid preimage authorizes the claim, so
+    /// relays and watchers can submit it without the counterparty's signature.
+    /// Funds are always sent to the counterparty stored in the swap.
+    ///
     /// The secret is emitted in the event — this is intentional.
     /// The counterparty's agent on chain B watches for this event
     /// and uses the revealed secret to claim funds there.
@@ -128,8 +132,6 @@ impl AtomicSwapHTLC {
             .expect("Swap not found");
 
         assert!(swap.status == SwapStatus::Locked, "Swap not in locked state");
-
-        swap.counterparty.require_auth();
 
         let computed_hash: BytesN<32> = env.crypto().sha256(&secret).into();
         assert!(computed_hash == swap.secret_hash, "Invalid secret");
@@ -160,6 +162,9 @@ impl AtomicSwapHTLC {
     }
 
     /// Refund initiator after timeout. Anyone can call this.
+    ///
+    /// This is permissionless because the timeout and fixed initiator destination
+    /// protect the funds; the caller cannot redirect the refund.
     pub fn refund(env: Env, swap_id: BytesN<32>) {
         let mut swap: AtomicSwap = env
             .storage()
