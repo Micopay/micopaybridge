@@ -4,6 +4,7 @@ import { runMigrations } from "../db/migrator.js";
 import { initX402Tables } from "../db/x402.js";
 import {
   initBazaarTables,
+  seedAgentHistories,
   seedIntents,
 } from "../db/bazaar.js";
 import { config } from "../config.js";
@@ -578,6 +579,7 @@ async function main() {
     console.log("\n🚀 Starting database seed...");
 
     const merchantsCount = await seedMerchants();
+    await seedAgentHistories();
     await seedIntents();
     await seedX402Payments();
     await seedSwapHistory();

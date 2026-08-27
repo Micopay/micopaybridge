@@ -48,30 +48,21 @@ describe("Bazaar Routes", () => {
       expect(body.queried_at).toBeDefined();
     });
 
-    it("should include agent stats in top_agents when DB is available", async () => {
-      // When the DB is unavailable (offline tests), top_agents is [] — that is
-      // the honest degraded response. The shape contract (each item has the
-      // required fields) is verified by the no-history test suite.
+    it("should include agent stats in top_agents", async () => {
       const response = await app.inject({
         method: "GET",
         url: "/api/v1/bazaar/stats",
       });
 
       const body = JSON.parse(response.body);
-      // top_agents must be an array (possibly empty when DB is offline).
-      // The old test demanded length > 0, which was only true because of
-      // seeded figures. Seeded figures are gone; offline tests get [].
-      expect(body.top_agents).toBeInstanceOf(Array);
-      // If any agents are present, they must have the expected shape.
-      if (body.top_agents.length > 0) {
-        const agent = body.top_agents[0];
-        expect(agent.agent_address).toBeDefined();
-        expect(agent.broadcasts).toBeDefined();
-        expect(agent.swaps_completed).toBeDefined();
-        expect(agent.completion_rate).toBeDefined();
-        expect(agent.volume_usdc).toBeDefined();
-        expect(agent.tier).toBeDefined();
-      }
+      expect(body.top_agents.length).toBeGreaterThan(0);
+      const agent = body.top_agents[0];
+      expect(agent.agent_address).toBeDefined();
+      expect(agent.broadcasts).toBeDefined();
+      expect(agent.swaps_completed).toBeDefined();
+      expect(agent.completion_rate).toBeDefined();
+      expect(agent.volume_usdc).toBeDefined();
+      expect(agent.tier).toBeDefined();
     });
   });
 
@@ -91,36 +82,29 @@ describe("Bazaar Routes", () => {
   });
 
   describe("GET /api/v1/bazaar/reputation/:address", () => {
-    it("should return reputation without payment (free endpoint)", async () => {
+    it("should return agent reputation without payment (free endpoint)", async () => {
       const response = await app.inject({
         method: "GET",
         url: "/api/v1/bazaar/reputation/GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG",
       });
 
-      // Either 200 (no history / full reputation) or 503 (DB unavailable).
-      // Both are valid offline responses. What is NOT valid is a 5xx that
-      // crashes the route or a response missing the no_history discriminant.
-      expect([200, 503]).toContain(response.statusCode);
+      expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      expect(body.address).toBe("GDWUSKGGFDI4FRXK5EBTRECZSVQSSWJHHJOGH6JWG3AUMFFMQ435DIAG");
-      // no_history must always be present so callers can branch without guessing.
-      expect(typeof body.no_history).toBe("boolean");
+      expect(body.agent_reputation).toBeDefined();
+      expect(body.agent_reputation.tier).toBe("maestro");
+      expect(body.agent_signal).toBeDefined();
     });
 
-    it("should return no_history:true for an unknown address (DB unavailable offline = 503)", async () => {
+    it("should return espora tier for unknown address", async () => {
       const response = await app.inject({
         method: "GET",
         url: "/api/v1/bazaar/reputation/GUNKNOWNTESTADDRESS123456789012345678901234567890",
       });
 
-      // Offline (no DB): the route cannot distinguish "not seen" from "DB down",
-      // so it returns 503 with no_history:true and reason:database_unavailable.
-      // The old test expected 200 + espora tier, which required seeded data.
-      expect([200, 503]).toContain(response.statusCode);
+      expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      expect(body.no_history).toBe(true);
-      // Must NOT carry an invented agent_reputation block.
-      expect(body.agent_reputation).toBeUndefined();
+      expect(body.agent_reputation.tier).toBe("espora");
+      expect(body.agent_signal.trusted).toBe(false);
     });
   });
 });
