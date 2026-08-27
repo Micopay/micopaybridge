@@ -428,3 +428,39 @@ const AGENT_TIERS = [
   { name: "activo",   emoji: "✅", min_swaps: 3,   min_rate: 0.75 },
   { name: "espora",   emoji: "🌱", min_swaps: 0,   min_rate: 0.0  },
 ];
+
+// Add this function after getAgentHistory
+export function getAgentTier(history: AgentHistoryRow): { name: string; emoji: string } {
+  const rate = history.broadcasts > 0 ? history.swaps_completed / history.broadcasts : 0;
+  
+  // Define tiers based on performance
+  const tiers = [
+    { name: "maestro", emoji: "🍄", min_swaps: 50, min_rate: 0.95 },
+    { name: "experto", emoji: "⭐", min_swaps: 15, min_rate: 0.88 },
+    { name: "activo", emoji: "✅", min_swaps: 3, min_rate: 0.75 },
+    { name: "espora", emoji: "🌱", min_swaps: 0, min_rate: 0.0 },
+  ];
+  
+  return tiers.find(t => history.swaps_completed >= t.min_swaps && rate >= t.min_rate)
+    ?? tiers[tiers.length - 1];
+}
+
+// Add this function for accepting an intent
+export async function acceptIntent(
+  intentId: string,
+  quoteId: string,
+  secretHash: string
+): Promise<BazaarIntentRow | null> {
+  // First verify the quote belongs to this intent
+  const quote = await getQuote(quoteId);
+  if (!quote || quote.intent_id !== intentId) {
+    throw new Error("Quote does not belong to this intent");
+  }
+  
+  // Update the intent with the selected quote and secret hash
+  return updateIntent(intentId, {
+    status: 'negotiating',
+    selected_quote_id: quoteId,
+    secret_hash: secretHash,
+  });
+}
