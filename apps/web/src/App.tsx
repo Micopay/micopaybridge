@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import FundWidget from "./components/FundWidget";
 import ServiceCatalog from "./components/ServiceCatalog";
 import DemoTerminal from "./components/DemoTerminal";
@@ -73,6 +73,25 @@ function ApiNoConfigurada() {
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("demo");
   const { isDemoMode } = useDemoStatus();
+
+  // El badge decía "testnet live" fijo, incluso con la API en mainnet. Sale
+  // de /health, que es quien sabe en qué red está corriendo de verdad.
+  const [network, setNetwork] = useState<string | null>(null);
+  useEffect(() => {
+    if (!API_URL) return;
+    let cancelled = false;
+    fetch(`${API_URL}/health`)
+      .then((res) => res.json())
+      .then((data: { network?: string }) => {
+        if (!cancelled) setNetwork(data.network ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setNetwork(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Sin API no hay nada que enseñar: cada panel de abajo vive de llamarla. Más
   // vale decirlo que pintar siete pestañas que fallan en silencio.
@@ -186,7 +205,13 @@ export default function App() {
                 display: "inline-block",
               }}
             />
-            <span style={{ color: "#4ade80" }}>testnet live</span>
+            <span style={{ color: "#4ade80" }}>
+              {network === null
+                ? "live"
+                : network === "PUBLIC"
+                  ? "mainnet live"
+                  : "testnet live"}
+            </span>
             <span style={{ color: "#4b5563" }}>· Sin cuenta · Sin API key</span>
           </div>
         </div>
