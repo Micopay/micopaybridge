@@ -205,7 +205,11 @@ export function activationTxJson(params: {
   amountXrp: string;
   cancelAfterSeconds?: number;
 }): Omit<EscrowCreate, "Account"> {
-  const cancelAfterSec = params.cancelAfterSeconds ?? 300;
+  // 1 h, no 5 min: rippled rechaza el EscrowCreate si CancelAfter ya pasó
+  // cuando llega la firma, y el payload de Xaman vive más que eso. Con 300 s
+  // quien instalaba Xaman por primera vez firmaba una tx muerta: fee quemado
+  // y sin escrow. El plazo solo marca desde cuándo se puede reclamar.
+  const cancelAfterSec = params.cancelAfterSeconds ?? 3600;
   const preimage = bt.generatePreimage(); // se usa una vez y se olvida — no se guarda
   return {
     TransactionType: "EscrowCreate",

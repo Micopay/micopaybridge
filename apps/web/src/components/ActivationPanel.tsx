@@ -13,7 +13,7 @@ interface Payload {
 type Step = "idle" | "creating" | "waiting" | "done" | "error";
 type ReclaimStep = "idle" | "creating" | "waiting" | "done" | "error";
 
-const CANCEL_AFTER_SECONDS = 300; // default de activationTxJson en el backend
+const CANCEL_AFTER_SECONDS = 3600; // default de activationTxJson en el backend
 
 // Sin custodia: el backend arma la transacción y crea un payload de Xaman
 // (QR + deep link), pero quien firma es la propia wallet del usuario —
