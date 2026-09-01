@@ -16,8 +16,12 @@ services:
         value: 3000
 
       # ── Stellar / Soroban — MAINNET ──────────────────────────────────────
+      # mainnet.sorobanrpc.com no: dio "transaction submission timeout" dos
+      # veces seguidas en el deploy del 2026-08-14 (la tx nunca llegó al
+      # ledger, verificado con getTransaction -> NOT_FOUND). Este respondió
+      # al primer intento, y sigue healthy al 2026-08-26.
       - key: STELLAR_RPC_URL
-        value: https://mainnet.sorobanrpc.com   # VERIFICAR antes de desplegar
+        value: https://soroban-rpc.mainnet.stellar.gateway.fm
       - key: STELLAR_NETWORK
         value: PUBLIC
       - key: MOCK_STELLAR
