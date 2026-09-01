@@ -1,3 +1,4 @@
+import * as StellarSdk from "@stellar/stellar-sdk";
 import { config } from "../config.js";
 import { query } from "../db/schema.js";
 
@@ -91,10 +92,16 @@ async function checkContractDeployed(contractId: string): Promise<ContractStatus
   }
 
   try {
-    const key = {
-      type: "contract" as const,
-      contractId,
-    };
+    // getLedgerEntry (singular) ya no existe: el RPC de mainnet (27.1.1)
+    // responde -32601. El vigente es getLedgerEntries, con la LedgerKey en
+    // XDR base64 — aquí, la instancia del contrato.
+    const key = StellarSdk.xdr.LedgerKey.contractData(
+      new StellarSdk.xdr.LedgerKeyContractData({
+        contract: new StellarSdk.Address(contractId).toScAddress(),
+        key: StellarSdk.xdr.ScVal.scvLedgerKeyContractInstance(),
+        durability: StellarSdk.xdr.ContractDataDurability.persistent(),
+      }),
+    ).toXDR("base64");
 
     const response = await fetch(config.stellarRpcUrl, {
       method: "POST",
@@ -102,26 +109,24 @@ async function checkContractDeployed(contractId: string): Promise<ContractStatus
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
-        method: "getLedgerEntry",
-        params: {
-          key: {
-            type: "Contract",
-            contractId,
-          },
-        },
+        method: "getLedgerEntries",
+        params: { keys: [key] },
       }),
     });
 
     if (!response.ok) {
-      if (response.status === 404) {
-        return { deployed: false, error: "Contract not found" };
-      }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const data = await response.json() as { result?: unknown };
-    if (!data.result) {
-      return { deployed: false, error: "Empty response" };
+    const data = await response.json() as {
+      result?: { entries?: unknown[] };
+      error?: { message?: string };
+    };
+    if (data.error) {
+      throw new Error(data.error.message ?? "RPC error");
+    }
+    if (!data.result?.entries?.length) {
+      return { deployed: false, error: "Contract not found" };
     }
 
     return { deployed: true };
