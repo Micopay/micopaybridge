@@ -301,7 +301,11 @@ export default function ActivationPanel({ apiUrl }: Props) {
             Abrir en Xaman
           </a>
           {enTelefono ? (
-            <details style={{ marginTop: "1rem" }}>
+            /* Abierto de entrada: el botón sigue siendo lo primero, pero el QR
+               se ve sin tener que tocar nada — a quien lo abrió en la
+               computadora, o tiene Xaman en un segundo teléfono, no le pedimos
+               un paso extra para encontrarlo. Se puede plegar. */
+            <details open style={{ marginTop: "1rem" }}>
               <summary style={{ fontSize: "0.8rem", color: "#9ca3af", cursor: "pointer" }}>
                 ¿Tienes Xaman en otro teléfono? Escanea el código
               </summary>
