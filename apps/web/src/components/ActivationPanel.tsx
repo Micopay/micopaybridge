@@ -15,6 +15,14 @@ type ReclaimStep = "idle" | "creating" | "waiting" | "done" | "error";
 
 const CANCEL_AFTER_SECONDS = 3600; // default de activationTxJson en el backend
 
+// `pointer: coarse` y no el ancho: lo que decide si el QR sirve es si hay un
+// dedo o un ratón, no cuántos píxeles mide la ventana. Una laptop con pantalla
+// chica sí puede escanear con el teléfono; un móvil en horizontal no.
+const enTelefono =
+  typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia("(pointer: coarse)").matches
+    : false;
+
 // Sin custodia: el backend arma la transacción y crea un payload de Xaman
 // (QR + deep link), pero quien firma es la propia wallet del usuario —
 // escaneando o abriendo la app. El backend nunca ve una seed. Ver
@@ -271,14 +279,19 @@ export default function ActivationPanel({ apiUrl }: Props) {
 
       {step === "waiting" && payload && (
         <div style={{ ...box, textAlign: "center" }}>
-          <img
-            src={payload.qrPng}
-            alt="Código QR de Xaman"
-            style={{ width: "220px", height: "220px", margin: "0 auto 1rem", borderRadius: "0.5rem" }}
-          />
-          <p style={{ margin: "0 0 1rem", fontSize: "0.8rem", color: "#9ca3af" }}>
-            Escanea con la app de Xaman, o ábrela directo desde este teléfono
-          </p>
+          {/* En un teléfono el QR es inútil — nadie escanea su propia pantalla —
+              y ocupaba el lugar de lo único accionable. El deep link va primero
+              ahí, y el QR queda como alternativa para quien abrió en la
+              computadora. No se navega solo al abrir: si no tienen Xaman
+              instalado acaban en una pantalla rota sin contexto, y iOS bloquea
+              la navegación que no nace de un gesto del usuario. */}
+          {!enTelefono && (
+            <img
+              src={payload.qrPng}
+              alt="Código QR de Xaman"
+              style={{ width: "220px", height: "220px", margin: "0 auto 1rem", borderRadius: "0.5rem" }}
+            />
+          )}
           <a
             href={payload.deepLink}
             target="_blank"
@@ -287,6 +300,22 @@ export default function ActivationPanel({ apiUrl }: Props) {
           >
             Abrir en Xaman
           </a>
+          {enTelefono ? (
+            <details style={{ marginTop: "1rem" }}>
+              <summary style={{ fontSize: "0.8rem", color: "#9ca3af", cursor: "pointer" }}>
+                ¿Tienes Xaman en otro teléfono? Escanea el código
+              </summary>
+              <img
+                src={payload.qrPng}
+                alt="Código QR de Xaman"
+                style={{ width: "200px", height: "200px", margin: "1rem auto 0", borderRadius: "0.5rem" }}
+              />
+            </details>
+          ) : (
+            <p style={{ margin: "1rem 0 0", fontSize: "0.8rem", color: "#9ca3af" }}>
+              Escanea el código con la app de Xaman, o abre desde este dispositivo
+            </p>
+          )}
           <p style={{ margin: "1rem 0 0", fontSize: "0.75rem", color: "#4b5563" }}>
             Esperando que firmes...
           </p>

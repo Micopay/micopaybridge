@@ -14,6 +14,8 @@ import { API_URL, APP_URL } from "./config";
 
 type Tab = "demo" | "swap" | "zk" | "bazaar" | "reputation" | "fund" | "services" | "activate";
 
+const TAB_IDS: Tab[] = ["demo", "swap", "zk", "bazaar", "reputation", "fund", "services", "activate"];
+
 // No login gate here on purpose: this dashboard is a human observer console
 // for the agent economy demo, not something an agent itself ever sees — the
 // whole pitch is agents talk to the API directly, no account, no API key.
@@ -71,7 +73,14 @@ function ApiNoConfigurada() {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>("demo");
+  // El hash elige pestaña para poder repartir un link de un solo propósito:
+  // `#activate` abre directo en activación. Sin esto, quien llega desde una
+  // campaña aterriza en la terminal de agentes y tiene que encontrar
+  // "🔑 Activar" entre ocho pestañas, que en un teléfono van cortadas.
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const desdeHash = window.location.hash.replace("#", "");
+    return TAB_IDS.includes(desdeHash as Tab) ? (desdeHash as Tab) : "demo";
+  });
   const { isDemoMode } = useDemoStatus();
 
   // El badge decía "testnet live" fijo, incluso con la API en mainnet. Sale
@@ -229,7 +238,10 @@ export default function App() {
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => {
+              setActiveTab(tab.id);
+              window.location.hash = tab.id;
+            }}
             style={{
               padding: "0.75rem 1rem",
               fontSize: "0.875rem",
