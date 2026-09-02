@@ -8,6 +8,7 @@
  * ni se puede inventar, ver docs/ESTRATEGIA_300_CUENTAS.md).
  */
 import { XummSdk } from "xumm-sdk";
+import * as bt from "@micopaybridge/xrpl-bridge/bridge-translate";
 import { activationTxJson, activationCancelTxJson } from "./xrpl-leg.js";
 
 let sdk: XummSdk | null = null;
@@ -42,6 +43,34 @@ export interface ActivationPayload {
  */
 const pendingCancelAfter = new Map<string, number>();
 
+/**
+ * Margen entre que el usuario aprieta "firmar" en Xaman y que la tx entra a
+ * un ledger validado. Cinco minutos es holgado: XRPL cierra ledger cada 3-5 s.
+ */
+const MARGEN_DE_FIRMA_SEG = 300;
+
+/**
+ * Minutos que Xaman debe mantener vivo el payload.
+ *
+ * El payload NUNCA puede sobrevivir a su propio `CancelAfter`. Por defecto
+ * Xaman lo deja 24 h, y `CancelAfter` se ancla al momento de crearlo: con
+ * una hora de plazo eso dejaba 23 h en las que el QR seguía firmándose pero
+ * la transacción ya nacía vencida — rippled la rechaza, el usuario quema la
+ * fee, no queda escrow y su dirección no cuenta para las 300. Peor aún,
+ * firmó: cree que funcionó.
+ *
+ * Atar la expiración al plazo real convierte ese fallo silencioso en un
+ * "código expirado, genera otro", que no cuesta nada y se entiende.
+ *
+ * Devuelve <= 0 cuando el plazo es tan corto que no queda ventana honesta.
+ * NO se redondea hacia arriba a 1 minuto: ese clamp volvía a romper la
+ * invariante justo en el plazo mínimo. Quien llama debe rechazar.
+ */
+export function minutosDeFirma(cancelAfterRipple: number, ahoraUnix: number): number {
+  const restante = bt.fromRippleTime(cancelAfterRipple) - ahoraUnix - MARGEN_DE_FIRMA_SEG;
+  return Math.floor(restante / 60);
+}
+
 export async function createActivationPayload(params: {
   accountAddress: string;
   amountXrp: string;
@@ -64,8 +93,15 @@ export async function createActivationPayload(params: {
   // el EscrowCreate de xrpl.js es una interfaz normal sin index signature —
   // no encajan estructuralmente aunque el shape en runtime es exactamente
   // el que pide. any de frontera, no de descuido.
+  const expire = minutosDeFirma(Number(txFields.CancelAfter), Math.floor(Date.now() / 1000));
+  if (expire <= 0) {
+    throw new Error(
+      "el plazo pedido no deja ventana para firmar — sube cancelAfterSeconds",
+    );
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const created = await getSdk().payload.create({ txjson: tx } as any);
+  const created = await getSdk().payload.create({ txjson: tx, options: { expire } } as any);
   if (!created) throw new Error("Xaman no devolvió el payload");
 
   // Number(): Omit<EscrowCreate, "Account"> pierde el tipo literal de

@@ -8,7 +8,7 @@ import {
   clearPendingCancelAfter,
   xummConfigured,
 } from "../lib/xumm.js";
-import { fetchTxSequence } from "../lib/xrpl-leg.js";
+import { accountExists, fetchTxSequence } from "../lib/xrpl-leg.js";
 import { trackActivationEscrow } from "../lib/activationSweeper.js";
 
 /**
@@ -53,9 +53,22 @@ export async function activationRoutes(fastify: FastifyInstance): Promise<void> 
       }
       if (
         cancelAfterSeconds !== undefined &&
-        (!Number.isInteger(cancelAfterSeconds) || cancelAfterSeconds < 60 || cancelAfterSeconds > 86400)
+        (!Number.isInteger(cancelAfterSeconds) || cancelAfterSeconds < 600 || cancelAfterSeconds > 86400)
       ) {
-        return reply.status(400).send({ error: "cancelAfterSeconds debe estar entre 60 y 86400" });
+        // Mínimo 600 y no 60: la expiración del payload se deriva de este
+        // plazo menos el margen de firma, así que por debajo de 10 min no
+        // queda ventana en la que el usuario alcance a firmar algo válido.
+        return reply.status(400).send({ error: "cancelAfterSeconds debe estar entre 600 y 86400" });
+      }
+
+      // Una wallet recién creada en Xaman y sin fondear no existe para XRPL
+      // y no puede firmar nada. Decirlo aquí, y no dejar que descubra un QR
+      // muerto. `null` = no se pudo comprobar; se deja pasar a propósito.
+      if ((await accountExists(account)) === false) {
+        return reply.status(400).send({
+          error:
+            "esa dirección todavía no existe en XRPL — hay que fondearla con al menos 2.2 XRP (1 de reserva de la cuenta, 0.2 que queda retenida por el escrow, más lo que vayas a bloquear)",
+        });
       }
 
       try {

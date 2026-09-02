@@ -146,6 +146,36 @@ export function xrplAddressFromSeed(seed: string): string {
 }
 
 /**
+ * ¿Esta dirección existe en el ledger?
+ *
+ * Que una dirección tenga formato válido no dice nada: una wallet recién
+ * creada en Xaman y nunca fondeada no existe para XRPL (`actNotFound`) y no
+ * puede firmar. Sin esta comprobación le entregábamos un QR a la persona
+ * que más probablemente lo escanee — alguien que acaba de instalar Xaman
+ * para esto — y el flujo moría sin explicación.
+ *
+ * Devuelve `null` si no se pudo saber (RPC caído, timeout). Quien llama debe
+ * dejar pasar ese caso: bloquear a todo el mundo porque el nodo no responde
+ * es peor que dejar entrar a alguien con una cuenta sin fondear.
+ */
+export async function accountExists(address: string): Promise<boolean | null> {
+  try {
+    return await withClient(async (client) => {
+      try {
+        await client.request({ command: "account_info", account: address, ledger_index: "validated" });
+        return true;
+      } catch (err) {
+        const code = (err as { data?: { error?: string } })?.data?.error;
+        if (code === "actNotFound" || String(err).includes("actNotFound")) return false;
+        throw err;
+      }
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Busca en el ledger el `Sequence` de una tx ya confirmada — es lo que hace
  * falta como `OfferSequence` para cancelar el escrow que esa tx creó. No lo
  * devuelve Xaman: solo da el hash, hay que ir a buscarlo.
