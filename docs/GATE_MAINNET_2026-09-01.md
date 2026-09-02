@@ -1,6 +1,7 @@
-# Mainnet Gate — estado verificado 2026-08-26
+# Mainnet Gate — estado verificado 2026-09-01
 
-Todo lo de aquí se comprobó contra la cadena y el repo el 2026-08-26, no
+Todo lo de aquí se comprobó contra la cadena, el repo y los servicios
+en vivo el 2026-09-01, no
 contra notas anteriores. Los números que no pude verificar están marcados
 como tales.
 
@@ -54,7 +55,8 @@ Las únicas que existen hoy en mainnet:
 ## 2. Estado del código
 
 - `npm run build` — 4/4 tareas verdes
-- `npm test -w @micopay/api` — **113 pasan, 1 skip, 1 falla**
+- `npm test -w @micopay/api` — **200 pasan, 1 skip, 1 falla** (la rama se
+  rebaseó sobre `upstream/main`, así que hereda la suite de bazaar entera)
   - La que falla es `agent-execute.test.ts`: necesita Postgres en
     `localhost:5432` (`ECONNREFUSED`). No es del flujo de activación.
 - Source tag cableado en los 5 constructores de tx de `lib/xrpl-leg.ts`,
@@ -70,10 +72,10 @@ Las únicas que existen hoy en mainnet:
 
 | Entregable | Estado |
 |---|---|
-| App viva en mainnet | ❌ **bloqueado** — trial de Railway vencido, `api` y `web` con 0 réplicas |
+| App viva en mainnet | ✅ web-production-eb54.up.railway.app y api-production-9ec74.up.railway.app; `/health` responde `network: PUBLIC` |
 | Repo público con README + LICENSE | ✅ `Micopay/micopaybridge` y `Micopay/micopay-protocol`, ambos PUBLIC + MIT |
+| Pitch deck | ✅ `MicoPay_Atomic_Bridge_CORREGIDO.pdf`, 10 láminas — decía "testnet" en 3 lugares, se le anexa una lámina de estado en mainnet |
 | Video ≤3 min | ⚠️ el de la ficha (`youtube.com/watch?v=2XfkGeQFXik`) es de julio y es testnet — sin confirmar si sirve |
-| Pitch deck | ⚠️ sin verificar |
 | Resumen de métricas | ver §4 |
 
 ---
@@ -98,15 +100,14 @@ ajena al equipo.
 1. **Agendar la reunión de validación.** Cuesta $0 y es lo que el panel
    pide. Sin eso el proyecto no entra al leaderboard aunque el resto esté
    perfecto.
-2. **Hosting.** Railway pide plan ($5/mes, Hobby incluye $5 de consumo;
-   estos dos servicios gastan menos). Alternativa gratis: Render, pero se
-   duerme a los 15 min y hay que corregir el RPC de `render.yaml`.
-   Sin URL pública no hay forma de que 300 personas firmen.
+2. **El video.** Es el único entregable del §8 que sigue sin resolver, y
+   faltar a uno es descalificación.
 3. **Cuál repo miran los jueces.** La ficha del reto apunta a
    `micopay-protocol`; todo el XRPL vive en `micopaybridge`. Cerrarlo con
    Mota o actualizar la ficha.
 4. **PR #3** (`Micopay/micopaybridge#3`) — abierto desde el 14 ago, sin
-   reviews, 21 commits atrás de `main`. Trae la activación vía Xaman.
+   reviews. Está `MERGEABLE` / `CLEAN`: lo detiene la falta de revisión, no
+   el diff. La rama ya se rebaseó sobre `upstream/main` y pasa la suite.
 5. **`XRPL_SWEEPER_SEED` no está configurado.** El `activationSweeper` solo
    loguea avisos: el XRP que bloqueen los usuarios no se les regresa solo
    hasta que alguien mande el `EscrowCancel`.
