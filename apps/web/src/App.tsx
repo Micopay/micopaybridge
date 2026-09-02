@@ -227,12 +227,19 @@ export default function App() {
       </header>
 
       {/* Tabs */}
+      {/* La fila desbordaba el ancho del documento en pantallas angostas: ocho
+          pestañas en un flex sin scroll hacían la página más ancha que el
+          teléfono, y al arrastrar aparecía el blanco del body detrás del
+          fondo oscuro. Que la barra scrollee por dentro deja el documento del
+          ancho de la pantalla. */}
       <nav
+        className="no-scrollbar"
         style={{
           borderBottom: "1px solid #1f2937",
           padding: "0 1.5rem",
           display: "flex",
           gap: "0.25rem",
+          overflowX: "auto",
         }}
       >
         {tabs.map((tab) => (
@@ -247,6 +254,10 @@ export default function App() {
               fontSize: "0.875rem",
               background: "none",
               border: "none",
+              // Sin esto el flex las comprime y "Swap XRPL↔Soroban" parte en
+              // dos renglones de distinta altura que el resto.
+              flexShrink: 0,
+              whiteSpace: "nowrap",
               borderBottom:
                 activeTab === tab.id
                   ? "2px solid #4ade80"
