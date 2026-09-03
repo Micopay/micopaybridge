@@ -10,6 +10,7 @@ import {
   reservePaymentKey,
   releaseReservedPayment,
 } from "../db/x402.js";
+import { NETWORK_PASSPHRASE, HORIZON_URL, NETWORK_NAME } from "../lib/stellarNetwork.js";
 
 let x402Initialized = false;
 
@@ -59,11 +60,10 @@ const USDC_ASSET_CODE = "USDC";
 // SEC-A1: without pinning the issuer, `op.asset.code === "USDC"` accepts an
 // asset with that code minted by ANY account — a free, worthless lookalike.
 const USDC_ISSUER = process.env.USDC_ISSUER ?? "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
-const STELLAR_NETWORK = process.env.STELLAR_NETWORK ?? "TESTNET";
-const NETWORK_PASSPHRASE =
-  STELLAR_NETWORK === "MAINNET" ? Networks.PUBLIC : Networks.TESTNET;
-const HORIZON_URL =
-  STELLAR_NETWORK === "MAINNET" ? "https://horizon.stellar.org" : "https://horizon-testnet.stellar.org";
+// Ver lib/stellarNetwork.ts: esto interpretaba STELLAR_NETWORK por su cuenta y
+// solo reconocía "MAINNET", mientras lib/soroban.ts solo reconocía "PUBLIC".
+// Con el valor del deploy ("PUBLIC") el swap movía fondos reales y los pagos se
+// verificaban contra Horizon de testnet — se pagaba con USDC gratis.
 
 // ── Base (BASE_IMPLEMENTATION_PLAN_2026-07.md, WP2) ─────────────────────────
 const X402_ACCEPT_CHAINS = (process.env.X402_ACCEPT_CHAINS ?? "stellar")
@@ -220,7 +220,7 @@ function build402Body(config: X402Config) {
   if (X402_ACCEPT_CHAINS.includes("stellar")) {
     accepts.push({
       scheme: "stellar-usdc",
-      network: STELLAR_NETWORK.toLowerCase(),
+      network: NETWORK_NAME,
       maxAmountRequired: config.amount,
       resource: config.service,
       description: `MicoPay ${config.service}`,
@@ -255,7 +255,7 @@ function build402Body(config: X402Config) {
       memo: `micopay:${config.service}`,
       expires_at: Math.floor(Date.now() / 1000) + 300, // 5 min
       service: config.service,
-      network: STELLAR_NETWORK.toLowerCase(),
+      network: NETWORK_NAME,
       instructions:
         "Send a Stellar USDC payment to pay_to with the specified memo. Include the signed XDR in X-PAYMENT header.",
     },

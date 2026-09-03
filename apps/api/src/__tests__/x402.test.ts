@@ -71,6 +71,19 @@ describe("x402 Middleware", () => {
   });
 
   describe("with mock payment but X402_MOCK_MODE unset (SEC-C2 regression)", () => {
+    const originalMockMode = process.env.X402_MOCK_MODE;
+
+    // Borrarla explícitamente: un .env local con X402_MOCK_MODE=true hacía
+    // que este test pasara en CI y fallara en la máquina del desarrollador.
+    beforeAll(() => {
+      delete process.env.X402_MOCK_MODE;
+    });
+
+    afterAll(() => {
+      if (originalMockMode === undefined) delete process.env.X402_MOCK_MODE;
+      else process.env.X402_MOCK_MODE = originalMockMode;
+    });
+
     it("should reject the mock payment header", async () => {
       const response = await app.inject({
         method: "GET",

@@ -17,9 +17,14 @@ import crypto from "crypto";
 import * as bt from "@micopaybridge/xrpl-bridge/bridge-translate";
 import { swapStore, type SwapState } from "./swapStore.js";
 import { lockXrplLeg, revealOnXrpl, cancelXrplLeg, xrplAddressFromSeed } from "./xrpl-leg.js";
+import { NETWORK_PASSPHRASE } from "./stellarNetwork.js";
 
 const RPC_URL = process.env.STELLAR_RPC_URL ?? "https://soroban-testnet.stellar.org";
-const NET      = StellarSdk.Networks.TESTNET;
+// La red sale de lib/stellarNetwork.ts, que es la única que interpreta
+// STELLAR_NETWORK. Este archivo la resolvía por su cuenta aceptando solo
+// "PUBLIC", y x402 solo "MAINNET": no había valor que pusiera a los dos en la
+// red real. De NET dependen el passphrase de firma y los SAC de abajo.
+const NET = NETWORK_PASSPHRASE;
 
 const USDC_ISSUER = process.env.USDC_ISSUER ?? "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 const USDC_SAC    = new StellarSdk.Asset("USDC", USDC_ISSUER).contractId(NET);

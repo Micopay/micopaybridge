@@ -39,7 +39,10 @@ body {
   min-height: 100dvh;
   font-family: var(--font-body);
   color: var(--color-on-surface);
-  background-color: var(--color-surface);
+  /* La consola es oscura de punta a punta (el contenedor raíz usa
+     bg-gray-950). Dejar el body blanco hacía que cualquier rebote de scroll
+     en móvil, o cualquier desborde, mostrara un fondo blanco detrás. */
+  background-color: #030712;
 }
 
 @layer utilities {

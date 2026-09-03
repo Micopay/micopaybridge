@@ -23,3 +23,7 @@ packages/*/src/*.js
 packages/*/src/*.js.map
 packages/*/src/*.d.ts
 packages/*/src/*.d.ts.map
+
+# Config local de Claude Code (launch.json para levantar los dev servers).
+# Es herramienta de quien desarrolla, no del producto.
+.claude/

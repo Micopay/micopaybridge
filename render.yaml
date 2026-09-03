@@ -1,0 +1,97 @@
+services:
+  # ── MicoPay Bridge API (agentes, x402, swap atómico XRPL<->Soroban) ────────
+  # Monorepo npm workspaces + turbo: build corre desde la raíz para que
+  # @micopay/sdk, @micopay/types y @micopaybridge/xrpl-bridge se compilen
+  # antes que apps/api (turbo.json: build depende de ^build).
+  - type: web
+    name: micopaybridge-api
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: node apps/api/dist/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+
+      # ── Stellar / Soroban — MAINNET ──────────────────────────────────────
+      # mainnet.sorobanrpc.com no: dio "transaction submission timeout" dos
+      # veces seguidas en el deploy del 2026-08-14 (la tx nunca llegó al
+      # ledger, verificado con getTransaction -> NOT_FOUND). Este respondió
+      # al primer intento, y sigue healthy al 2026-08-26.
+      - key: STELLAR_RPC_URL
+        value: https://soroban-rpc.mainnet.stellar.gateway.fm
+      - key: STELLAR_NETWORK
+        value: PUBLIC
+      - key: MOCK_STELLAR
+        value: "false"
+      # atomic-swap (AtomicSwapHTLC) desplegado 2026-08-14, source mainnet-bridge
+      # (GBW7XHCAX5IWIMZ44KIXLBJNM5DPQKCJXUGAFTJXV3RG6OAFWV23BA3R):
+      # https://stellar.expert/explorer/public/contract/CB5TCVEBQDUI2GSQZLMUA2H7FHFHCQLKVGZYJZBECPDVKZCI3PFZUGPU
+      - key: ESCROW_CONTRACT_ID
+        value: "CB5TCVEBQDUI2GSQZLMUA2H7FHFHCQLKVGZYJZBECPDVKZCI3PFZUGPU"
+      - key: ATOMIC_SWAP_CONTRACT_A
+        value: "CB5TCVEBQDUI2GSQZLMUA2H7FHFHCQLKVGZYJZBECPDVKZCI3PFZUGPU"
+      - key: ZK_VERIFIER_CONTRACT_ID
+        value: "TODO: ZkVerifierRegistry mainnet, si aplica"
+      # Circle, home_domain=circle.com, verificado en Horizon + stellar.expert (2026-08-14)
+      - key: USDC_ISSUER
+        value: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+
+      # ── XRPL — MAINNET ────────────────────────────────────────────────────
+      - key: XRPL_SERVER
+        value: wss://xrplcluster.com   # VERIFICAR antes de desplegar
+
+      # ── x402 / seguridad ──────────────────────────────────────────────────
+      - key: X402_MOCK_MODE
+        value: "false"
+      - key: DEMO_MODE
+        value: "false"
+      - key: ALLOW_CLIENT_ROOTS
+        value: "false"
+
+      - key: DATABASE_URL
+        fromDatabase:
+          name: micopaybridge-db
+          property: connectionString
+
+      # Secretos — configurar a mano en el dashboard de Render, nunca aquí:
+      - key: PLATFORM_SECRET_KEY
+        sync: false
+      - key: DEMO_AGENT_SECRET_KEY
+        sync: false
+      - key: DEMO_AGENT_PUBLIC_KEY
+        sync: false
+      - key: XRPL_COUNTERPARTY_SEED
+        sync: false
+      - key: XRPL_INITIATOR_SEED
+        sync: false
+      # Estrategia de 300 cuentas (activación vía Xaman) — sin esto el tab
+      # "Activar" responde 503. Crear proyecto en apps.xaman.dev.
+      - key: XUMM_API_KEY
+        sync: false
+      - key: XUMM_API_SECRET
+        sync: false
+      # Paga el fee de EscrowCancel cuando vence el timeout — necesita unos
+      # pocos XRP en mainnet, no del usuario. Ver .env.example.
+      - key: XRPL_SWEEPER_SEED
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SECRET_ENCRYPTION_KEY
+        sync: false
+      - key: ADMIN_SECRET_KEY
+        sync: false
+      - key: OPERATOR_SECRET_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false   # obligatorio en producción — sin esto se rechazan todos los CORS
+
+databases:
+  - name: micopaybridge-db
+    plan: free
+    databaseName: micopaybridge
+    user: micopaybridge

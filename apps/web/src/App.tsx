@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import FundWidget from "./components/FundWidget";
 import ServiceCatalog from "./components/ServiceCatalog";
 import DemoTerminal from "./components/DemoTerminal";
@@ -7,11 +7,14 @@ import ZKDemoTerminal from "./components/ZKDemoTerminal";
 import ReputationPanel from "./components/ReputationPanel";
 import BazaarFeed from "./components/BazaarFeed";
 import DemoBanner from "./components/DemoBanner";
+import ActivationPanel from "./components/ActivationPanel";
 import { useDemoStatus } from "./hooks/useDemoStatus";
 
 import { API_URL, APP_URL } from "./config";
 
-type Tab = "demo" | "swap" | "zk" | "bazaar" | "reputation" | "fund" | "services";
+type Tab = "demo" | "swap" | "zk" | "bazaar" | "reputation" | "fund" | "services" | "activate";
+
+const TAB_IDS: Tab[] = ["demo", "swap", "zk", "bazaar", "reputation", "fund", "services", "activate"];
 
 // No login gate here on purpose: this dashboard is a human observer console
 // for the agent economy demo, not something an agent itself ever sees — the
@@ -70,8 +73,34 @@ function ApiNoConfigurada() {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>("demo");
+  // El hash elige pestaña para poder repartir un link de un solo propósito:
+  // `#activate` abre directo en activación. Sin esto, quien llega desde una
+  // campaña aterriza en la terminal de agentes y tiene que encontrar
+  // "🔑 Activar" entre ocho pestañas, que en un teléfono van cortadas.
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const desdeHash = window.location.hash.replace("#", "");
+    return TAB_IDS.includes(desdeHash as Tab) ? (desdeHash as Tab) : "demo";
+  });
   const { isDemoMode } = useDemoStatus();
+
+  // El badge decía "testnet live" fijo, incluso con la API en mainnet. Sale
+  // de /health, que es quien sabe en qué red está corriendo de verdad.
+  const [network, setNetwork] = useState<string | null>(null);
+  useEffect(() => {
+    if (!API_URL) return;
+    let cancelled = false;
+    fetch(`${API_URL}/health`)
+      .then((res) => res.json())
+      .then((data: { network?: string }) => {
+        if (!cancelled) setNetwork(data.network ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setNetwork(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Sin API no hay nada que enseñar: cada panel de abajo vive de llamarla. Más
   // vale decirlo que pintar siete pestañas que fallan en silencio.
@@ -85,6 +114,7 @@ export default function App() {
     { id: "reputation", label: "⭐ Reputación" },
     { id: "fund", label: "💚 Fund MicoPay" },
     { id: "services", label: "📡 Servicios" },
+    { id: "activate", label: "🔑 Activar" },
   ];
 
   return (
@@ -184,30 +214,50 @@ export default function App() {
                 display: "inline-block",
               }}
             />
-            <span style={{ color: "#4ade80" }}>testnet live</span>
+            <span style={{ color: "#4ade80" }}>
+              {network === null
+                ? "live"
+                : network === "PUBLIC"
+                  ? "mainnet live"
+                  : "testnet live"}
+            </span>
             <span style={{ color: "#4b5563" }}>· Sin cuenta · Sin API key</span>
           </div>
         </div>
       </header>
 
       {/* Tabs */}
+      {/* La fila desbordaba el ancho del documento en pantallas angostas: ocho
+          pestañas en un flex sin scroll hacían la página más ancha que el
+          teléfono, y al arrastrar aparecía el blanco del body detrás del
+          fondo oscuro. Que la barra scrollee por dentro deja el documento del
+          ancho de la pantalla. */}
       <nav
+        className="no-scrollbar"
         style={{
           borderBottom: "1px solid #1f2937",
           padding: "0 1.5rem",
           display: "flex",
           gap: "0.25rem",
+          overflowX: "auto",
         }}
       >
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => {
+              setActiveTab(tab.id);
+              window.location.hash = tab.id;
+            }}
             style={{
               padding: "0.75rem 1rem",
               fontSize: "0.875rem",
               background: "none",
               border: "none",
+              // Sin esto el flex las comprime y "Swap XRPL↔Soroban" parte en
+              // dos renglones de distinta altura que el resto.
+              flexShrink: 0,
+              whiteSpace: "nowrap",
               borderBottom:
                 activeTab === tab.id
                   ? "2px solid #4ade80"
@@ -231,6 +281,7 @@ export default function App() {
         {activeTab === "reputation" && <ReputationPanel apiUrl={API_URL} />}
         {activeTab === "fund" && <FundWidget apiUrl={API_URL} />}
         {activeTab === "services" && <ServiceCatalog apiUrl={API_URL} />}
+        {activeTab === "activate" && <ActivationPanel apiUrl={API_URL} />}
       </main>
     </div>
   );
