@@ -33,7 +33,7 @@ describe("x402 Middleware", () => {
       expect(body.challenge.amount_usdc).toBe("0.001");
     });
 
-    it("should include payment instructions", async () => {
+    it("should include payment instructions with memo and time bounds requirements (BRIDGE-11)", async () => {
       const response = await app.inject({
         method: "GET",
         url: "/test",
@@ -41,7 +41,9 @@ describe("x402 Middleware", () => {
 
       const body = JSON.parse(response.body);
       expect(body.challenge.instructions).toBeDefined();
-      expect(body.challenge.network).toBe("testnet");
+      expect(body.challenge.instructions).toContain("memo");
+      expect(body.challenge.instructions).toContain("time bounds");
+      expect(body.challenge.memo).toBe("micopay:test");
     });
   });
 
