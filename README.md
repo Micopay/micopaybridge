@@ -152,13 +152,36 @@ El tercer caso es el que usa el `activationSweeper`: cualquiera puede mandar el
 
 | Qué | Dirección |
 |---|---|
-| `AtomicSwapHTLC` (Stellar mainnet) | [`CB5TCVEB…ZUGPU`](https://stellar.expert/explorer/public/contract/CB5TCVEBQDUI2GSQZLMUA2H7FHFHCQLKVGZYJZBECPDVKZCI3PFZUGPU) — wasm `a5e4bc1d…6ede`, fuente **sin verificar** en stellar.expert |
+| `AtomicSwapHTLC` (Stellar mainnet) | [`CB5TCVEB…ZUGPU`](https://stellar.expert/explorer/public/contract/CB5TCVEBQDUI2GSQZLMUA2H7FHFHCQLKVGZYJZBECPDVKZCI3PFZUGPU) — wasm `a5e4bc1d…6ede`, reproducible desde este repo (ver abajo) |
 | Deployer Stellar | [`GBW7XHCA…BA3R`](https://stellar.expert/explorer/public/account/GBW7XHCAX5IWIMZ44KIXLBJNM5DPQKCJXUGAFTJXV3RG6OAFWV23BA3R) |
 | Wallets XRPL del equipo | [`rETyvXg5pFdFL4KxfZASejmpGuh2urh5cY`](https://livenet.xrpl.org/accounts/rETyvXg5pFdFL4KxfZASejmpGuh2urh5cY), [`rQaPLVuFeb8LdwPx51c4wP6Kb9MNHN9i9t`](https://livenet.xrpl.org/accounts/rQaPLVuFeb8LdwPx51c4wP6Kb9MNHN9i9t) |
 | Source tag XRPL | `2607170001` |
 
 Los demás pagos que aparecen en esas cuentas XRPL (montos ínfimos de remitentes
 desconocidos) son spam de la red, no actividad nuestra.
+
+### El contrato de mainnet es el código de este repo
+
+stellar.expert lo marca `unverified` porque su verificación (SEP-55) exige que el wasm
+lleve `source_repo` en sus metadatos y se compile en su GitHub Action, y este se compiló
+antes de eso. Se puede comprobar a mano: compilar `contracts/atomic-swap` (sin cambios
+desde `068e913`) da byte a byte el wasm desplegado.
+
+```bash
+cd contracts
+cargo +1.97.1 build --package atomic-swap --target wasm32-unknown-unknown --release --locked
+stellar contract optimize --wasm target/wasm32-unknown-unknown/release/atomic_swap.wasm --wasm-out atomic_swap.opt.wasm
+sha256sum atomic_swap.opt.wasm   # a5e4bc1d6777197511946fd175a455fbe6a6593a40ef724bfcbd325f3bd46ede
+
+# el que corre en mainnet:
+stellar contract fetch --id CB5TCVEBQDUI2GSQZLMUA2H7FHFHCQLKVGZYJZBECPDVKZCI3PFZUGPU \
+  --rpc-url https://soroban-rpc.mainnet.stellar.gateway.fm \
+  --network-passphrase "Public Global Stellar Network ; September 2015" -o mainnet.wasm
+sha256sum mainnet.wasm           # el mismo hash
+```
+
+Reproducido el 2026-10-02 en Windows con Rust 1.97.1 y `stellar` CLI 27.0.0. No se ha
+probado en Linux ni en macOS.
 
 ## Qué hay en el repo
 
