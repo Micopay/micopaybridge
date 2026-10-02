@@ -7,6 +7,9 @@
 > to machines. The difference is that machines never need a timeout sized for someone who might
 > be asleep.
 >
+> **Running on mainnet:** a Stellar↔XRPL atomic swap and user-signed XRPL account activations,
+> with every transaction linked in [Evidencia on-chain](#evidencia-on-chain).
+>
 > The documentation below is in Spanish. **The [open issues](https://github.com/Micopay/micopaybridge/issues)
 > are in English** — that is where to start if you want to contribute.
 
@@ -66,11 +69,10 @@ implementar el otro lado está en
 
 Por orden, no por fecha:
 
-1. **Cerrar el ciclo en mainnet.** Hoy todo corre contra testnets. El swap está probado de
-   punta a punta, pero la red está fijada en el código en varios sitios y los contratos
-   solo existen en testnet.
-2. **Desplegar el protocolo.** La consola ya está publicada; la API todavía no vive en
-   ningún sitio.
+1. ~~**Cerrar el ciclo en mainnet.**~~ Hecho: swap de dos piernas y activación en
+   mainnet, ver [Evidencia on-chain](#evidencia-on-chain).
+2. ~~**Desplegar el protocolo.**~~ Hecho en Railway; falta que la consola de
+   `micopay.com.mx/bridge` apunte a esa API.
 3. **Que el mercado tenga agentes de verdad**, no dos guiones de demo — que es cuando
    `agent_history` empieza a significar algo.
 4. **Conectar el bazaar a la red de efectivo de MicoPay.** Ese es el día que un agente
@@ -86,13 +88,77 @@ Lo que **no** es este repo: nada del APK ni de la app móvil retail. Eso vive en
 
 | Pieza | Dónde | Estado |
 |---|---|---|
+| API (`apps/api`) | [api-production-9ec74.up.railway.app](https://api-production-9ec74.up.railway.app/health) | viva, `network: PUBLIC` |
+| Consola con API | [web-production-eb54.up.railway.app](https://web-production-eb54.up.railway.app/#activate) | viva, apunta a la API de mainnet |
 | Consola (`apps/web`) | [micopay.com.mx/bridge](https://micopay.com.mx/bridge) | publicada, **sin API a la que llamar** |
-| API (`apps/api`) | — | sin desplegar |
-| Contratos Soroban | testnet | desplegados |
-| Pierna XRPL | testnet | verificada contra la red |
+| `AtomicSwapHTLC` | Stellar mainnet | desplegado — ver [Evidencia on-chain](#evidencia-on-chain) |
+| Pierna XRPL | XRPL mainnet | swap y activación ejecutados — ver [Evidencia on-chain](#evidencia-on-chain) |
 
-La consola dice en pantalla que no tiene backend, en vez de fallar en silencio. Cuando la
-API exista se recompila con `VITE_API_URL` y las pestañas vuelven.
+La consola de `micopay.com.mx/bridge` dice en pantalla que no tiene backend, en vez de
+fallar en silencio. Se recompila con `VITE_API_URL` apuntando a la API de arriba y las
+pestañas vuelven.
+
+## Evidencia on-chain
+
+Todo lo de esta sección se puede comprobar en un explorador público, sin pedirnos nada.
+Verificado contra la cadena el 2026-10-02.
+
+### Swap atómico Stellar ↔ XRPL en mainnet (2026-08-14)
+
+Un swap de dos piernas ejecutado con `npm run test:live:mainnet -w @micopay/api`. Las
+cuatro transacciones ocurren en 22 segundos y las dos cadenas quedan atadas al mismo
+secreto:
+
+| # | Cadena | Operación | Transacción | Hora (UTC) |
+|---|---|---|---|---|
+| 1 | Stellar | `lock` — 0.5 XLM, `secret_hash = 3c2753…b694` | [`3ea23f11…`](https://stellar.expert/explorer/public/tx/3ea23f111d682e7f1bd20510a84d177d75d50a9f9449a323ba043c1ce8d6fb51) | 06:32:25 |
+| 2 | XRPL | `EscrowCreate` — 1 XRP, `Condition` con fingerprint `3C2753…B694` | [`C5716941…`](https://livenet.xrpl.org/transactions/C57169418DAFE632568C1589457F64612E8908B598D88D19742A017671889636) | 06:32:31 |
+| 3 | XRPL | `EscrowFinish` — `Fulfillment` revela la preimagen `4290d7…11d2` | [`731495D1…`](https://livenet.xrpl.org/transactions/731495D15390B777DDD117170EC48EE619F89A7D37BC6978D4AD93C796094B74) | 06:32:41 |
+| 4 | Stellar | `release` — con la misma preimagen `4290d7…11d2` | [`e659177c…`](https://stellar.expert/explorer/public/tx/e659177c7d5ed508f95751908e97f9c2a9bd9c4cafadf878d9bcbd9f17fe234d) | 06:32:47 |
+
+Para comprobar que es **un** swap y no dos escrows sueltos:
+
+```bash
+# la preimagen que se publicó en XRPL (paso 3) y se usó en Stellar (paso 4)…
+node -e 'console.log(require("crypto").createHash("sha256").update(Buffer.from("4290d7e4f7895a6a04e7b41b9bfbd2e0beacde6358a03e07e834ada544f811d2","hex")).digest("hex"))'
+# …da 3c275318762292dfd76e3011f3785658622f1f993727577b7ed612f33499b694:
+# el secret_hash del lock en Stellar (paso 1) y el fingerprint de la Condition en XRPL (paso 2)
+```
+
+El `swap_id` del `release` (`b1066bcb…d726`) es `sha256(secret_hash)`, como define el
+contrato. El `EscrowCreate` lleva el source tag `2607170001`.
+
+**Límites, dichos de frente:** las dos partes son wallets del equipo, y en la pierna de
+Stellar el iniciador y la contraparte son la misma cuenta (el contrato no exige que
+difieran). Prueba que el mecanismo funciona en mainnet con dinero real; no prueba que dos
+agentes independientes lo hayan usado.
+
+### Activación de cuentas XRPL firmada desde Xaman (2026-09-03)
+
+Un self-escrow de 1 XRP que el usuario firma desde su propia wallet: el backend arma el
+payload y **nunca firma**. `Destination == Account` y sin `FinishAfter`, así que el XRP
+solo puede volver a su dueño. Se probaron las dos formas de recuperarlo:
+
+| Escrow | Cuenta | Recuperado por | Transacciones |
+|---|---|---|---|
+| 1 | `rETyvXg5…h5cY` | el dueño, con "Reclamar mi XRP" | [`CD97BBD6…`](https://livenet.xrpl.org/transactions/CD97BBD625B1AF16595652A2670DB9C2B44022E4A43A172CA590C2B64CB45B1A) → [`1FBC6AB5…`](https://livenet.xrpl.org/transactions/1FBC6AB5B9370CB388FA3C5A7446D6466F731FD12F519FF44FD1F922267402EF) |
+| 2 | `rQaPLVuF…i9t` | el dueño, con "Reclamar mi XRP" | [`707F4C2B…`](https://livenet.xrpl.org/transactions/707F4C2B9D1183866BAE406875E39F3B7CE885153B69BD5B1BEDD592F2167532) → [`018DE208…`](https://livenet.xrpl.org/transactions/018DE208A66EF25789058B0DCE80F29537876BB5DF78AA5CDBD4082A75812CF3) |
+| 3 | `rQaPLVuF…i9t` | una **tercera cuenta**, tras vencer `CancelAfter` | [`F801DF6F…`](https://livenet.xrpl.org/transactions/F801DF6FCC8479843EF52944D5702591B63D4EC8D7DFCCEDD9D43396155DEBCA) → [`783FFDAB…`](https://livenet.xrpl.org/transactions/783FFDAB4D1C4CF019C1384496CCA4C3A47B7BC45DF7A0BE1BF2DC8B19FBB8A3) |
+
+El tercer caso es el que usa el `activationSweeper`: cualquiera puede mandar el
+`EscrowCancel` cuando vence el plazo, pero el XRP vuelve siempre al dueño.
+
+### Contrato y cuentas
+
+| Qué | Dirección |
+|---|---|
+| `AtomicSwapHTLC` (Stellar mainnet) | [`CB5TCVEB…ZUGPU`](https://stellar.expert/explorer/public/contract/CB5TCVEBQDUI2GSQZLMUA2H7FHFHCQLKVGZYJZBECPDVKZCI3PFZUGPU) — wasm `a5e4bc1d…6ede`, fuente **sin verificar** en stellar.expert |
+| Deployer Stellar | [`GBW7XHCA…BA3R`](https://stellar.expert/explorer/public/account/GBW7XHCAX5IWIMZ44KIXLBJNM5DPQKCJXUGAFTJXV3RG6OAFWV23BA3R) |
+| Wallets XRPL del equipo | [`rETyvXg5pFdFL4KxfZASejmpGuh2urh5cY`](https://livenet.xrpl.org/accounts/rETyvXg5pFdFL4KxfZASejmpGuh2urh5cY), [`rQaPLVuFeb8LdwPx51c4wP6Kb9MNHN9i9t`](https://livenet.xrpl.org/accounts/rQaPLVuFeb8LdwPx51c4wP6Kb9MNHN9i9t) |
+| Source tag XRPL | `2607170001` |
+
+Los demás pagos que aparecen en esas cuentas XRPL (montos ínfimos de remitentes
+desconocidos) son spam de la red, no actividad nuestra.
 
 ## Qué hay en el repo
 
