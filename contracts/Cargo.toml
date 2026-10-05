@@ -16,11 +16,14 @@
 # para todo el workspace: hay que construir por paquete. `cargo test` no se
 # ve afectado porque corre nativo. Viene así del origen; unificar las
 # versiones sería un refactor y M1 no es el momento (§7 del plan).
+# delegated-release-htlc llegó en M2 (plan de limpieza de micopay-protocol,
+# 2026-10-04) con sus pruebas; usa el mismo htlc-core y soroban-sdk 21.7.6.
 members = [
     "htlc-core",
     "atomic-swap",
     "micopay-escrow",
     "zk-verifier",
+    "delegated-release-htlc",
 ]
 resolver = "2"
 
