@@ -16,6 +16,7 @@ struct TestEnv {
     contract_id: Address,
     initiator: Address,
     counterparty: Address,
+    third_party: Address,
     token_id: Address,
 }
 
@@ -27,13 +28,14 @@ impl TestEnv {
         let admin = Address::generate(&env);
         let initiator = Address::generate(&env);
         let counterparty = Address::generate(&env);
+        let third_party = Address::generate(&env);
 
         let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
         StellarAssetClient::new(&env, &token_id).mint(&initiator, &1_000_000_000);
 
         let contract_id = env.register_contract(None, AtomicSwapHTLC);
 
-        TestEnv { env, contract_id, initiator, counterparty, token_id }
+        TestEnv { env, contract_id, initiator, counterparty, third_party, token_id }
     }
 
     fn client(&self) -> AtomicSwapHTLCClient {
@@ -114,6 +116,25 @@ fn test_release_moves_funds_to_counterparty() {
     assert_eq!(t.token().balance(&t.counterparty), amount);
     assert_eq!(t.token().balance(&t.contract_id), 0);
     assert_eq!(t.client().get_swap(&swap_id).status, SwapStatus::Released);
+}
+
+#[test]
+fn test_third_party_release_pays_only_counterparty() {
+    let t = TestEnv::new();
+    let amount: i128 = 100_000_000;
+    let (secret, hash) = t.make_secret();
+    let swap_id = t.client().lock(
+        &t.initiator, &t.counterparty, &t.token_id,
+        &amount, &hash, &MIN_TIMEOUT_LEDGERS,
+    );
+
+    t.env.as_contract(&t.third_party, || {
+        AtomicSwapHTLCClient::new(&t.env, &t.contract_id).release(&swap_id, &secret);
+    });
+
+    assert_eq!(t.token().balance(&t.counterparty), amount);
+    assert_eq!(t.token().balance(&t.third_party), 0);
+    assert_eq!(t.token().balance(&t.contract_id), 0);
 }
 
 #[test]
