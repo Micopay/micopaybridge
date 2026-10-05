@@ -37,7 +37,7 @@ describe("App — DemoBanner property tests", () => {
     vi.clearAllMocks();
   });
 
-  it("Property 5: DemoBanner is present whenever isDemoMode=true (100 runs)", () => {
+  it("Property 5: DemoBanner is present whenever isDemoMode=true (10 runs)", () => {
     // Feature: demo-mode, Property 5: DemoBanner present on every page when isDemoMode=true
     fc.assert(
       fc.property(fc.boolean(), (isDemoMode) => {
@@ -54,7 +54,9 @@ describe("App — DemoBanner property tests", () => {
         unmount();
         return result;
       }),
-      { numRuns: 100 },
+      // fc.boolean() only has two values; 10 runs cover both with margin.
+      // 100 full renders of <App /> sat at the 5 s timeout on CI (5030-5258 ms).
+      { numRuns: 10 },
     );
   });
 
