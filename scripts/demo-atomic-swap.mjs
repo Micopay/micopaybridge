@@ -9,6 +9,12 @@
  *   Agent     →  uses public secret on A  →  gets USDC
  *
  * All 4 transactions are submitted to testnet and verifiable on stellar.expert.
+ *
+ * DEMO HISTÓRICA. Las cuentas y los contratos de abajo están fijos en el código:
+ * las claves son de prueba y ya están expuestas en este repositorio, así que no
+ * deben reutilizarse ni recibir fondos reales, y el estado de los contratos no
+ * está verificado. Antes de presentarlo como ejecutable hay que parametrizar
+ * cuentas y contratos (cambio aparte).
  */
 
 import * as StellarSdk from "@stellar/stellar-sdk";

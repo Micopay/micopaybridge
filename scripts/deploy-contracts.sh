@@ -12,7 +12,9 @@ echo "🍄 Deploying Micopay contracts to $NETWORK..."
 # Build contracts
 echo "[1/4] Building contracts..."
 cd contracts
-cargo build --target wasm32-unknown-unknown --release
+# Solo los dos contratos que despliega este script: zk-verifier usa otra versión
+# de soroban-sdk que rechaza wasm32-unknown-unknown (ver contracts/Cargo.toml).
+cargo build -p atomic-swap -p micopay-escrow --target wasm32-unknown-unknown --release --locked
 
 WASM_SWAP="target/wasm32-unknown-unknown/release/atomic_swap.wasm"
 WASM_ESCROW="target/wasm32-unknown-unknown/release/micopay_escrow.wasm"

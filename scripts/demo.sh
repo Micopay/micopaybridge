@@ -2,6 +2,10 @@
 # Micopay Protocol — Full Demo Script
 # Runs: service discovery → swap search → swap plan → fund micopay
 # Requires: API running on localhost:3000
+#
+# Los pasos de pago usan cabeceras simuladas: la API solo las acepta con
+# X402_MOCK_MODE=true y fuera de producción (apps/api/src/middleware/x402.ts).
+# Los pasos que llaman a servicios externos necesitan sus credenciales.
 
 set -e
 
