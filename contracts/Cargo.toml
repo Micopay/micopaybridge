@@ -21,6 +21,9 @@ members = [
     "atomic-swap",
     "micopay-escrow",
     "zk-verifier",
+    # Llega en M2 desde micopay-protocol (contracts/delegated-release-htlc):
+    # variante de HTLC con liberación sin permiso. No sustituye al escrow móvil.
+    "delegated-release-htlc",
 ]
 resolver = "2"
 
