@@ -191,11 +191,13 @@ export async function lockAtomicSwap(params: {
   amountUsdc: number;     // USDC to lock as collateral for the swap
   secretHash: string;     // 64-char hex — sha256 of the HTLC preimage
   timeoutMinutes?: number;
-}): Promise<{ txHash: string; swapId: string; explorerUrl: string }> {
+}): Promise<{ txHash: string; swapId: string; explorerUrl: string; lockedAmountUsdc: number; requestedAmountUsdc: number; capped: boolean }> {
   const { amountUsdc, secretHash, timeoutMinutes = 60 } = params;
 
   // Cap demo lock at 0.01 USDC to preserve platform balance for many trial runs
-  const lockAmount = Math.min(amountUsdc, 0.01);
+  const demoCap = process.env.DEMO_LOCK_CAP_USDC ? parseFloat(process.env.DEMO_LOCK_CAP_USDC) : 0.01;
+  const isCapped = amountUsdc > demoCap;
+  const lockAmount = isCapped ? demoCap : amountUsdc;
   const amountStroops = BigInt(Math.round(lockAmount * 10_000_000));
 
   try {
@@ -218,7 +220,10 @@ export async function lockAtomicSwap(params: {
     return {
       txHash,
       swapId,
-      explorerUrl: `https://stellar.expert/explorer/testnet/tx/${txHash}`,
+      explorerUrl,
+      lockedAmountUsdc: lockAmount,
+      requestedAmountUsdc: amountUsdc,
+      capped: isCapped, `https://stellar.expert/explorer/testnet/tx/${txHash}`,
     };
   } catch (err: any) {
     // No hay fallback. Esta es una capa de liquidacion: devolver un txHash que
