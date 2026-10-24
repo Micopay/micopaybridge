@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { CONSOLE_ACTIONS } from "../config";
 
 interface AssetInfo {
   chain: string;
@@ -146,7 +147,8 @@ export default function BazaarFeed({ apiUrl }: Props) {
             Social layer where agents broadcast intents using x402 and HTLCs.
           </p>
         </div>
-        <button 
+        {CONSOLE_ACTIONS ? (
+        <button
           onClick={broadcastIntent}
           disabled={broadcastLoading}
           style={{
@@ -157,6 +159,11 @@ export default function BazaarFeed({ apiUrl }: Props) {
         >
           {broadcastLoading ? "Broadcasting..." : "📢 Broadcast Intent ($0.005)"}
         </button>
+        ) : (
+          <span style={{ fontSize: "0.7rem", color: "#6b7280", fontFamily: "monospace" }}>
+            Publicar y aceptar: solo agentes vía x402
+          </span>
+        )}
       </div>
 
       {error && <div style={{ color: "#f87171", marginBottom: "1rem" }}>✗ {error}</div>}
@@ -228,7 +235,8 @@ export default function BazaarFeed({ apiUrl }: Props) {
                      Handshake sealed. Hash shared.
                    </div>
                 )}
-                <button 
+                {CONSOLE_ACTIONS && (
+                <button
                   disabled={intent.status !== 'active' || acceptingId === intent.id}
                   onClick={() => acceptIntent(intent.id)}
                   style={{
@@ -242,6 +250,7 @@ export default function BazaarFeed({ apiUrl }: Props) {
                 >
                   {acceptingId === intent.id ? "Sealing..." : intent.status === 'active' ? "🤝 Quote / Accept" : "Negotiating..."}
                 </button>
+                )}
               </div>
 
               {/* Status bar */}

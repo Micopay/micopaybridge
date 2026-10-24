@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { CONSOLE_ACTIONS } from "../config";
 
 const EXPLORER = "https://stellar.expert/explorer/testnet";
 const XRPL_EXPLORER = "https://testnet.xrpl.org";
@@ -291,6 +292,7 @@ export default function SwapStatus({ apiUrl }: Props) {
               Plan → Execute → 2 txs en Soroban + 2 en XRPL, contra testnets reales
             </p>
           </div>
+          {CONSOLE_ACTIONS && (
           <button
             onClick={runLiveSwap}
             disabled={execRunning}
@@ -307,6 +309,7 @@ export default function SwapStatus({ apiUrl }: Props) {
           >
             {execRunning ? "Running..." : "▶ Execute Swap"}
           </button>
+          )}
         </div>
 
         {execLog.length > 0 && (
