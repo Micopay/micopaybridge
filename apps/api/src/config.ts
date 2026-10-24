@@ -96,6 +96,9 @@ export const config = {
   // MVP flags
   mockStellar: process.env.MOCK_STELLAR === "true",
   enableInvestments: process.env.ENABLE_INVESTMENTS === "true" || process.env.DEMO_MODE === "true",
+  // Precio x402 de GET /api/v1/bazaar/feed. "0" lo deja gratis (fase de
+  // pruebas, para que la consola web lo lea); el valor final lo define el team.
+  bazaarFeedPriceUsdc: process.env.BAZAAR_FEED_PRICE_USDC || "0.001",
 
   // Base (BASE_IMPLEMENTATION_PLAN_2026-07.md, WP1)
   x402AcceptChains: (process.env.X402_ACCEPT_CHAINS || "stellar")
