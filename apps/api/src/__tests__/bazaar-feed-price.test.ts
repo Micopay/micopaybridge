@@ -63,3 +63,33 @@ describe("GET /api/v1/bazaar/feed — BAZAAR_FEED_PRICE_USDC", () => {
     expect(res.body).toContain("0.002");
   });
 });
+
+describe("GET /api/v1/swaps/:id/status — SWAP_STATUS_PRICE_USDC", () => {
+  async function statusWithPrice(price: string | undefined) {
+    if (price === undefined) delete process.env.SWAP_STATUS_PRICE_USDC;
+    else process.env.SWAP_STATUS_PRICE_USDC = price;
+    vi.resetModules();
+    const { swapRoutes } = await import("../routes/swaps.js");
+    const app = Fastify();
+    await app.register(swapRoutes);
+    await app.ready();
+    const res = await app.inject({ method: "GET", url: "/api/v1/swaps/no-existe/status" });
+    await app.close();
+    return res;
+  }
+
+  afterEach(() => {
+    delete process.env.SWAP_STATUS_PRICE_USDC;
+  });
+
+  it("sin variable cobra 0.0001 (402 sin x-payment)", async () => {
+    const res = await statusWithPrice(undefined);
+    expect(res.statusCode).toBe(402);
+    expect(res.body).toContain("0.0001");
+  });
+
+  it('con "0" llega al handler sin x-payment', async () => {
+    const res = await statusWithPrice("0");
+    expect(res.statusCode).toBe(404);
+  });
+});

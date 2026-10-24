@@ -99,6 +99,11 @@ export const config = {
   // Precio x402 de GET /api/v1/bazaar/feed. "0" lo deja gratis (fase de
   // pruebas, para que la consola web lo lea); el valor final lo define el team.
   bazaarFeedPriceUsdc: process.env.BAZAAR_FEED_PRICE_USDC || "0.001",
+  // Igual para las otras dos lecturas que usa la consola. Las rutas que mueven
+  // fondos con llaves del servidor (bazaar/accept, swaps/execute) no tienen
+  // esta opción a propósito: gratis, cualquiera podría dispararlas.
+  reputationPriceUsdc: process.env.REPUTATION_PRICE_USDC || "0.0005",
+  swapStatusPriceUsdc: process.env.SWAP_STATUS_PRICE_USDC || "0.0001",
 
   // Base (BASE_IMPLEMENTATION_PLAN_2026-07.md, WP1)
   x402AcceptChains: (process.env.X402_ACCEPT_CHAINS || "stellar")

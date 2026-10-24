@@ -57,7 +57,7 @@ export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
           // When disabled, price_usdc is omitted entirely (rather than set to
           // null) so strict string-parsing clients don't break on a type change;
           // `available: false` carries the disabled signal.
-          ...(reputationEnabled ? { price_usdc: "0.0005" } : {}),
+          ...(reputationEnabled ? { price_usdc: config.reputationPriceUsdc } : {}),
           available: reputationEnabled,
           status: reputationEnabled ? "active" : "disabled",
           description: "Verify a merchant's on-chain reputation before sending your user there. Returns tier, completion rate, trade history, and NFT soulbound badge.",
@@ -185,7 +185,7 @@ export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
           name: "swap_status",
           endpoint: "GET /api/v1/swaps/:id/status",
           method: "GET",
-          price_usdc: "0.0001",
+          price_usdc: config.swapStatusPriceUsdc,
           description: "Poll the status of an in-progress swap.",
           example_request: { id: "swap-83921" },
           why_pay: "Cheap status polling for a live swap.",

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { requirePayment } from "../middleware/x402.js";
+import { config } from "../config.js";
 import type { CounterpartyInfo } from "@micopay/types";
 import { swapStore, pendingRefunds, TX_CHAIN, type SwapState } from "../lib/swapStore.js";
 import { refundSwap } from "../lib/soroban.js";
@@ -322,7 +323,9 @@ export async function swapRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.get(
     "/api/v1/swaps/:id/status",
-    { preHandler: requirePayment({ amount: "0.0001", service: "swap_status" }) },
+    Number(config.swapStatusPriceUsdc) > 0
+      ? { preHandler: requirePayment({ amount: config.swapStatusPriceUsdc, service: "swap_status" }) }
+      : {},
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const swap = swapStore.get(id);
