@@ -86,6 +86,11 @@ export async function demoRoutes(
    * Total: ~$0.1165 USDC. All tx hashes verifiable on stellar.expert.
    */
   fastify.post("/api/v1/demo/run", async (_request, reply) => {
+    // Demo de testnet: en mainnet esta ruta gastaría fondos del agente demo
+    // sin pago ni login de por medio, así que ahí no existe.
+    if (config.stellarNetwork === "PUBLIC") {
+      return reply.status(404).send({ error: "Not Found" });
+    }
     const secret = process.env.DEMO_AGENT_SECRET_KEY;
     if (!secret) {
       return reply.status(503).send({
@@ -297,6 +302,11 @@ export async function demoRoutes(
    * isn't the intended "wow" order. Regenerate the fixture (WP-D1) for a fresh take.
    */
   fastify.post("/api/v1/demo/run-zk", async (_request, reply) => {
+    // Demo de testnet: en mainnet esta ruta gastaría fondos del agente demo
+    // sin pago ni login de por medio, así que ahí no existe.
+    if (config.stellarNetwork === "PUBLIC") {
+      return reply.status(404).send({ error: "Not Found" });
+    }
     const secret = process.env.DEMO_AGENT_SECRET_KEY;
     if (!secret) {
       return reply.status(503).send({

@@ -5,6 +5,7 @@ Llegaron desde `micopay-protocol` (commit `0819496`) en el paso M2 de su limpiez
 | Script | Requisitos |
 |---|---|
 | `setup-demo-agent.mjs` | `apps/api/.env` preparado (lo lee sin alternativa si falta) |
+| `setup-platform-mainnet.mjs` | Alta de la cuenta de plataforma (payTo de x402) en mainnet: `new`, fondeo manual con ~3 XLM, `trustline`, `check` |
 | `deploy-contracts.sh` | `stellar` CLI y `PLATFORM_SECRET_KEY`; compila solo `atomic-swap` y `micopay-escrow` |
 | `demo.sh` | API corriendo; `X402_MOCK_MODE=true` fuera de producción para los pagos simulados; credenciales de los servicios externos |
 | `demo-atomic-swap.mjs` | **Demo histórica** con cuentas y contratos fijos; ver la advertencia del archivo antes de ejecutarlo |
