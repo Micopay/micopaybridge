@@ -90,7 +90,8 @@ Lo que **no** es este repo: nada del APK ni de la app móvil retail. Eso vive en
 |---|---|---|
 | API (`apps/api`) | [api-production-9ec74.up.railway.app](https://api-production-9ec74.up.railway.app/health) | viva, `network: PUBLIC` |
 | Consola con API | [web-production-eb54.up.railway.app](https://web-production-eb54.up.railway.app/#activate) | viva, apunta a la API de mainnet |
-| Consola (`apps/web`) | [micopay.com.mx/bridge](https://micopay.com.mx/bridge) | publicada, **sin API a la que llamar** |
+| Consola (`apps/web`) | [micopay.com.mx/bridge](https://micopay.com.mx/bridge) | publicada, **sin API a la que llamar**; solo lectura (sin botones que muevan fondos) |
+| Consola demo (`apps/web`, `npm run deploy:demo`) | `micopay.com.mx/bridge-demo` | configurada, sin publicar: con botones de acción, necesita una API de **testnet** en `VITE_API_URL` |
 | `AtomicSwapHTLC` | Stellar mainnet | desplegado — ver [Evidencia on-chain](#evidencia-on-chain) |
 | Pierna XRPL | XRPL mainnet | swap y activación ejecutados — ver [Evidencia on-chain](#evidencia-on-chain) |
 

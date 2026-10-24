@@ -25,5 +25,25 @@
 
   "observability": {
     "enabled": true
+  },
+
+  // `npm run deploy:demo`: consola con botones de acción contra una API de
+  // testnet, en /bridge-demo. Worker aparte (micopay-bridge-demo) y carpeta
+  // aparte, para que un deploy nunca suba el build del otro.
+  "env": {
+    "demo": {
+      "name": "micopay-bridge-demo",
+      "assets": {
+        "directory": "dist-demo",
+        "not_found_handling": "single-page-application"
+      },
+      "routes": [
+        { "pattern": "micopay.com.mx/bridge-demo", "zone_name": "micopay.com.mx" },
+        { "pattern": "micopay.com.mx/bridge-demo/*", "zone_name": "micopay.com.mx" }
+      ],
+      "observability": {
+        "enabled": true
+      }
+    }
   }
 }
