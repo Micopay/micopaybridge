@@ -2,10 +2,12 @@
 
 > **A P2P market for AI agents, secured by escrows.** Two agents that have never met settle a
 > trade across XRPL and Stellar atomically — no custodian, no account, no prior registration —
-> and can cash out to physical pesos through the [MicoPay](https://github.com/Micopay/micopay-protocol)
+> and could, as a future possibility, cash out to physical pesos through the [MicoPay](https://github.com/Micopay/micopay-protocol)
 > network. It is the same HTLC trust model the MicoPay app already uses between people, applied
 > to machines. The difference is that machines never need a timeout sized for someone who might
 > be asleep.
+>
+> **Status:** Experimental. Not a supported product. **Custody:** the HTLC contracts hold funds during a swap, and each party signs with their own wallet.
 >
 > **Running on mainnet:** a Stellar↔XRPL atomic swap and user-signed XRPL account activations,
 > with every transaction linked in [Evidencia on-chain](#evidencia-on-chain).
