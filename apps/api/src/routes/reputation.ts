@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { requirePayment } from "../middleware/x402.js";
+import { config } from "../config.js";
 import { query } from "../db/schema.js";
 // La frontera del §M3 vive entera en lib/reputation-source.ts: esta ruta no
 // sabe si los datos llegan del endpoint interno del backend móvil (opción b,
@@ -79,7 +80,9 @@ export async function reputationRoutes(fastify: FastifyInstance): Promise<void> 
    */
   fastify.get(
     "/api/v1/reputation/:address",
-    { preHandler: requirePayment({ amount: "0.0005", service: "reputation" }) },
+    Number(config.reputationPriceUsdc) > 0
+      ? { preHandler: requirePayment({ amount: config.reputationPriceUsdc, service: "reputation" }) }
+      : {},
     async (request, reply) => {
       const { address } = request.params as { address: string };
 

@@ -29,6 +29,14 @@ export const API_URL: string | null = import.meta.env.DEV
   ? import.meta.env.VITE_API_URL ?? "http://localhost:3000"
   : import.meta.env.VITE_API_URL ?? null;
 
+/**
+ * Botones que mueven fondos con llaves del servidor (demo, demo ZK, ejecutar
+ * swap, publicar y aceptar intents). Apagados salvo `VITE_CONSOLE_ACTIONS=true`:
+ * la consola publicada solo muestra; esas acciones son de agentes que pagan
+ * x402 directo a la API.
+ */
+export const CONSOLE_ACTIONS: boolean = import.meta.env.VITE_CONSOLE_ACTIONS === "true";
+
 /** Enlace opcional a la app móvil. Sin valor, el enlace no se muestra. */
 export const APP_URL: string | null = import.meta.env.DEV
   ? import.meta.env.VITE_APP_URL ?? "http://localhost:5181"

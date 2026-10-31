@@ -12,6 +12,7 @@ swap-store/
 .turbo/
 target/
 dist/
+dist-demo/
 *.tsbuildinfo
 
 # Salida de tsc junto a la fuente. El `main` de cada paquete apunta a dist/,

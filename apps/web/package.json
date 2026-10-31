@@ -9,6 +9,8 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "deploy": "npm run build && npx --yes wrangler deploy",
+    "build:demo": "tsc && vite build --mode demo",
+    "deploy:demo": "npm run build:demo && npx --yes wrangler deploy --env demo",
     "test": "vitest run"
   },
   "dependencies": {

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { requirePayment } from "../middleware/x402.js";
+import { config } from "../config.js";
 import { randomUUID } from "crypto";
 import { lockAtomicSwap } from "../services/stellar.service.js";
 import {
@@ -147,7 +148,9 @@ export async function bazaarRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.get(
     "/api/v1/bazaar/feed",
-    { preHandler: requirePayment({ amount: "0.001", service: "bazaar_feed" }) },
+    Number(config.bazaarFeedPriceUsdc) > 0
+      ? { preHandler: requirePayment({ amount: config.bazaarFeedPriceUsdc, service: "bazaar_feed" }) }
+      : {},
     async (_request, reply) => {
       const rows = await getActiveIntents();
 

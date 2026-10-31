@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { config } from "../config.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -56,7 +57,7 @@ export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
           // When disabled, price_usdc is omitted entirely (rather than set to
           // null) so strict string-parsing clients don't break on a type change;
           // `available: false` carries the disabled signal.
-          ...(reputationEnabled ? { price_usdc: "0.0005" } : {}),
+          ...(reputationEnabled ? { price_usdc: config.reputationPriceUsdc } : {}),
           available: reputationEnabled,
           status: reputationEnabled ? "active" : "disabled",
           description: "Verify a merchant's on-chain reputation before sending your user there. Returns tier, completion rate, trade history, and NFT soulbound badge.",
@@ -86,7 +87,7 @@ export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
           name: "bazaar_feed",
           endpoint: "GET /api/v1/bazaar/feed",
           method: "GET",
-          price_usdc: "0.001",
+          price_usdc: config.bazaarFeedPriceUsdc,
           description: "Scan the global intent feed for opportunities. Returns latest active swap intents from other agents.",
           example_request: {},
           why_pay: "Access to private market data. Agents pay to discover arbitrage and fulfillment opportunities in the network.",
@@ -184,7 +185,7 @@ export async function serviceRoutes(fastify: FastifyInstance): Promise<void> {
           name: "swap_status",
           endpoint: "GET /api/v1/swaps/:id/status",
           method: "GET",
-          price_usdc: "0.0001",
+          price_usdc: config.swapStatusPriceUsdc,
           description: "Poll the status of an in-progress swap.",
           example_request: { id: "swap-83921" },
           why_pay: "Cheap status polling for a live swap.",

@@ -10,11 +10,13 @@ import DemoBanner from "./components/DemoBanner";
 import ActivationPanel from "./components/ActivationPanel";
 import { useDemoStatus } from "./hooks/useDemoStatus";
 
-import { API_URL, APP_URL } from "./config";
+import { API_URL, APP_URL, CONSOLE_ACTIONS } from "./config";
 
 type Tab = "demo" | "swap" | "zk" | "bazaar" | "reputation" | "fund" | "services" | "activate";
 
-const TAB_IDS: Tab[] = ["demo", "swap", "zk", "bazaar", "reputation", "fund", "services", "activate"];
+// "demo" y "zk" no tienen otra cosa que el botón que gasta fondos del servidor.
+const TAB_IDS: Tab[] = (["demo", "swap", "zk", "bazaar", "reputation", "fund", "services", "activate"] as Tab[])
+  .filter((id) => CONSOLE_ACTIONS || (id !== "demo" && id !== "zk"));
 
 // No login gate here on purpose: this dashboard is a human observer console
 // for the agent economy demo, not something an agent itself ever sees — the
@@ -79,7 +81,7 @@ export default function App() {
   // "🔑 Activar" entre ocho pestañas, que en un teléfono van cortadas.
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const desdeHash = window.location.hash.replace("#", "");
-    return TAB_IDS.includes(desdeHash as Tab) ? (desdeHash as Tab) : "demo";
+    return TAB_IDS.includes(desdeHash as Tab) ? (desdeHash as Tab) : TAB_IDS[0];
   });
   const { isDemoMode } = useDemoStatus();
 
@@ -106,7 +108,7 @@ export default function App() {
   // vale decirlo que pintar siete pestañas que fallan en silencio.
   if (!API_URL) return <ApiNoConfigurada />;
 
-  const tabs: { id: Tab; label: string }[] = [
+  const tabs = ([
     { id: "demo", label: "⚡ Demo" },
     { id: "swap", label: "🌉 Swap XRPL↔Soroban" },
     { id: "zk", label: "🔐 ZK Access" },
@@ -115,7 +117,7 @@ export default function App() {
     { id: "fund", label: "💚 Fund MicoPay" },
     { id: "services", label: "📡 Servicios" },
     { id: "activate", label: "🔑 Activar" },
-  ];
+  ] as { id: Tab; label: string }[]).filter((tab) => TAB_IDS.includes(tab.id));
 
   return (
     <div
